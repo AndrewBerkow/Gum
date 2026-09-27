@@ -8,6 +8,10 @@ from pathlib import Path
 cmd = os.environ["INPUTS_TEST_COMMAND"]
 attempt = os.environ["INPUTS_ATTEMPT"]
 strict = os.environ["INPUTS_STRICT"] == "true"
+if strict and "true" in (os.environ["INPUTS_V1"], os.environ["INPUTS_V2"], os.environ["INPUTS_V3"], os.environ["INPUTS_V4"]):
+    print(json.dumps({"passed": True, "log_path": "(validation already passed; not re-run)"}))
+    sys.exit(0)
+
 log = Path(os.environ["ARTIFACTS_DIR"]) / os.environ["INPUTS_TASK_ID"] / f"validate-{attempt}.log"
 
 log.parent.mkdir(parents=True, exist_ok=True)

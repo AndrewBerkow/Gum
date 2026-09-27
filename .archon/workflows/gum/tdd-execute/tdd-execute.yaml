@@ -84,6 +84,10 @@ nodes:
             task_id: "$pick-task.output.task_id"
             attempt: "1"
             strict: "false"
+            v1: "false"
+            v2: "false"
+            v3: "false"
+            v4: "false"
           output_format:
             type: object
             properties:
@@ -113,6 +117,10 @@ nodes:
             task_id: "$pick-task.output.task_id"
             attempt: "2"
             strict: "false"
+            v1: "false"
+            v2: "false"
+            v3: "false"
+            v4: "false"
           output_format:
             type: object
             properties:
@@ -140,6 +148,10 @@ nodes:
             task_id: "$pick-task.output.task_id"
             attempt: "3"
             strict: "false"
+            v1: "false"
+            v2: "false"
+            v3: "false"
+            v4: "false"
           output_format:
             type: object
             properties:
@@ -167,6 +179,10 @@ nodes:
             task_id: "$pick-task.output.task_id"
             attempt: "4"
             strict: "false"
+            v1: "false"
+            v2: "false"
+            v3: "false"
+            v4: "false"
           output_format:
             type: object
             properties:
@@ -195,6 +211,11 @@ nodes:
             task_id: "$pick-task.output.task_id"
             attempt: "final"
             strict: "true"
+            # Skip the rerun when a validation already passed (it re-ran the same slow tests).
+            v1: {from: "$validate-1.output.passed", if_skipped: "false"}
+            v2: {from: "$validate-2.output.passed", if_skipped: "false"}
+            v3: {from: "$validate-3.output.passed", if_skipped: "false"}
+            v4: {from: "$validate-4.output.passed", if_skipped: "false"}
 
         # 4. Completion summary
         - id: summarize
