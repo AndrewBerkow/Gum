@@ -149,3 +149,67 @@ def test_sweep_recommends_lowest_threshold_meeting_target_else_none():
 def test_sweep_estimates_cost_savings_from_lite_share():
     out = ev.sweep_thresholds(SWEEP, [0.5], lite_cost_ratio=0.2)
     assert out["rows"][0]["est_savings"] == pytest.approx(6 / 8 * 0.8)
+
+
+# ---- evaluate_item / run_all (fake classifier, no network)
+import asyncio  # noqa: E402
+
+from app.config import Settings  # noqa: E402
+from tests.unit.test_evaluate import resp  # noqa: E402
+
+
+class FakeClassifier:
+    def __init__(self, response=None, exc=None, delay=0.0):
+        self.response, self.exc, self.delay = response, exc, delay
+        self.requests, self.active, self.max_active = [], 0, 0
+
+    async def ainvoke(self, req, *a, **k):
+        self.requests.append(req)
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(self.delay)
+        finally:
+            self.active -= 1
+        if self.exc:
+            raise self.exc
+        return self.response
+
+
+SETTINGS = Settings(_env_file=None, jev_backend="stub", chat_provider="fake")
+ITEM = {"id": "x", "text": "hello", "expect_gate": "pass", "expect_tier": "simple", "notes": ""}
+
+
+async def test_evaluate_item_passed_record_carries_route_and_probabilities():
+    rec = await ev.evaluate_item(ITEM, FakeClassifier(resp(p_simple=0.88)), SETTINGS)
+    assert rec["id"] == "x" and rec["expect_gate"] == "pass" and rec["expect_tier"] == "simple"
+    assert rec["gate"] == "passed" and rec["route_tier"] == "lite"
+    assert rec["p_simple"] == pytest.approx(0.88) and rec["p_unsafe"] == pytest.approx(0.05)
+    assert rec["latency_ms"] > 0
+
+
+async def test_evaluate_item_blocked_record_has_reason_and_no_route():
+    rec = await ev.evaluate_item(ITEM, FakeClassifier(resp(p_unsafe=0.95)), SETTINGS)
+    assert rec["gate"] == "blocked" and rec["reason"] == "unsafe"
+    assert rec.get("route_tier") is None and rec.get("p_simple") is None
+
+
+async def test_evaluate_item_uses_context_as_alternating_history():
+    fake = FakeClassifier(resp())
+    await ev.evaluate_item({**ITEM, "context": ["what is a mutex?", "A lock."]}, fake, SETTINGS)
+    (req,) = fake.requests
+    assert req["state"]["latest"].content == "hello"
+    assert [type(m).__name__ for m in req["state"]["recent"]] == ["HumanMessage", "AIMessage"]
+
+
+async def test_evaluate_item_classifier_error_is_recorded_not_raised():
+    rec = await ev.evaluate_item(ITEM, FakeClassifier(exc=RuntimeError("boom")), SETTINGS)
+    assert rec["gate"] == "error" and rec["reason"] == "jev_error" and rec["latency_ms"] > 0
+
+
+async def test_run_all_preserves_order_and_bounds_concurrency():
+    items = [{**ITEM, "id": f"i{n}"} for n in range(12)]
+    fake = FakeClassifier(resp(), delay=0.01)
+    results = await ev.run_all(items, fake, SETTINGS, concurrency=3)
+    assert [r["id"] for r in results] == [f"i{n}" for n in range(12)]
+    assert 1 < fake.max_active <= 3

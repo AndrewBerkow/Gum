@@ -1,12 +1,20 @@
 """Offline routing eval: runs the Jev classifier + policy over a labeled dataset and reports metrics."""
 
+import asyncio
 import json
 import sys
 from pathlib import Path
+from time import perf_counter
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+
+from app.config import Settings  # noqa: E402
+from app.jev import build_request, evaluate  # noqa: E402
+from app.state import Tier  # noqa: E402
 
 
 def parse_sweep(spec: str) -> list[float]:
@@ -145,3 +153,58 @@ def sweep_thresholds(
         None,
     )
     return {"rows": out_rows, "recommended": recommended, "target": target}
+
+
+def _history(context: list[str]) -> list:
+    """Context strings alternate human / assistant, starting with the human."""
+    return [HumanMessage(c) if i % 2 == 0 else AIMessage(c) for i, c in enumerate(context)]
+
+
+async def evaluate_item(item: dict, classifier, settings: Settings) -> dict:
+    """Run one dataset item through build_request + classifier + evaluate into a raw result record."""
+    record: dict = {
+        "id": item["id"],
+        "expect_gate": item["expect_gate"],
+        "expect_tier": item.get("expect_tier"),
+    }
+    messages = [*_history(item.get("context") or []), HumanMessage(item["text"])]
+    request = build_request(messages, settings.guardrail_context_turns)
+    tiers: dict[Tier, str] = {"flash": settings.chat_model_flash, "lite": settings.chat_model_lite}
+    started = perf_counter()
+    try:
+        response = await asyncio.wait_for(classifier.ainvoke(request), timeout=settings.guardrail_timeout_s)
+    except Exception as exc:  # the eval records failures instead of aborting the run
+        latency_ms = max((perf_counter() - started) * 1000, 1e-6)
+        return {**record, "gate": "error", "reason": "jev_error", "error": type(exc).__name__,
+                "latency_ms": latency_ms}
+    latency_ms = max((perf_counter() - started) * 1000, 1e-6)
+    decision, route = evaluate(
+        response,
+        block_threshold=settings.block_threshold,
+        route_lite_threshold=settings.route_lite_threshold,
+        requested_tier="auto",
+        tiers=tiers,
+        latency_ms=latency_ms,
+        jev_model=settings.jev_model,
+    )
+    record.update(
+        gate=decision["status"],
+        reason=decision["reason"],
+        scope=decision["scope"],
+        p_unsafe=decision["p_unsafe"],
+        latency_ms=latency_ms,
+    )
+    if route is not None:
+        record.update(route_tier=route["tier"], p_simple=route["p_simple"])
+    return record
+
+
+async def run_all(items: list[dict], classifier, settings: Settings, concurrency: int = 8) -> list[dict]:
+    """Evaluate every item concurrently under a bounded semaphore; results keep dataset order."""
+    sem = asyncio.Semaphore(concurrency)
+
+    async def one(item: dict) -> dict:
+        async with sem:
+            return await evaluate_item(item, classifier, settings)
+
+    return list(await asyncio.gather(*(one(i) for i in items)))
