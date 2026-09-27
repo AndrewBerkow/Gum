@@ -1,3 +1,62 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Gum</title></head>
-<body><p>Gum chat harness. UI placeholder.</p></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gum</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { display: flex; flex-direction: column; background: #0b0e11; color: #c9d1d9;
+         font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #banner { display: none; background: #5c3b00; color: #ffcc66; padding: 4px 12px; font-weight: bold; }
+  #log { flex: 1; overflow-y: auto; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; }
+  #log div { min-height: 1.45em; }
+  #bar { display: flex; border-top: 1px solid #30363d; padding: 8px 12px; }
+  #prefix { color: #58a6ff; margin-right: 8px; white-space: nowrap; }
+  #input { flex: 1; background: transparent; border: 0; outline: 0; color: inherit; font: inherit; }
+  .user { color: #e6edf3; }
+  .green { color: #3fb950; }
+  .cyan { color: #39c5cf; }
+  .magenta { color: #d670d6; }
+  .yellow { color: #a8923a; }
+  .red { color: #f85149; }
+  .amber { color: #ffb000; }
+  .dim { color: #6e7681; }
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div id="log"></div>
+<div id="bar"><span id="prefix"></span><input id="input" type="text" autocomplete="off" spellcheck="false" autofocus></div>
+<script>
+"use strict";
+
+// Incremental SSE parser: push() takes decoded text chunks, returns completed {event, data} objects.
+function createSSEParser() {
+  let buf = "";
+  return {
+    push(chunk) {
+      buf = (buf + chunk).replace(/\r\n/g, "\n");
+      const out = [];
+      let i;
+      while ((i = buf.indexOf("\n\n")) !== -1) {
+        const block = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        let event = "message";
+        const data = [];
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+        }
+        if (!data.length) continue;
+        try { out.push({ event, data: JSON.parse(data.join("\n")) }); } catch (e) { /* skip malformed */ }
+      }
+      return out;
+    },
+  };
+}
+
+window.Gum = { createSSEParser };
+</script>
+</body>
+</html>
