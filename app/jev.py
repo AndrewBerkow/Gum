@@ -16,6 +16,7 @@ from langchain_typesafe import (
     NoulCriteria,
 )
 
+from app import devlog
 from app.config import Settings
 from app.state import ChatState, JevDecision, RouteDecision, Tier
 
@@ -194,6 +195,7 @@ def make_jev_gate_node(classifier: Any, settings: Settings):
             )
         except Exception as exc:  # fail closed on any error, including timeout
             log.warning("jev call failed: %s", type(exc).__name__)
+            devlog.emit("jev.error", error_type=type(exc).__name__, message=str(exc))
             response = None
         latency_ms = max((perf_counter() - started) * 1000, 1e-6)
 
@@ -209,6 +211,7 @@ def make_jev_gate_node(classifier: Any, settings: Settings):
                 latency_ms=latency_ms,
                 jev_model=settings.jev_model,
             )
+        devlog.emit("jev.decision", outcome=decision["status"])
         out: dict[str, Any] = {
             "guardrail_passed": decision["status"] == "passed",
             "jev_decision": decision,
