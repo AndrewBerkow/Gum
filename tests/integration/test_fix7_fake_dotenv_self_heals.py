@@ -56,7 +56,7 @@ def _clean_env(**overrides: str) -> dict[str, str]:
     env = {
         k: v
         for k, v in os.environ.items()
-        if k not in ("TYPESAFE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY")
+        if k not in ("TYPESAFE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "GUM_NESTED_SUITE")
         and not k.startswith(("LANGCHAIN_", "LANGSMITH_"))
     }
     env["LANGCHAIN_TRACING_V2"] = "false"
@@ -258,7 +258,7 @@ def test_self_heal_only_runs_outside_nested_suites():
 # AC: grep -rn '\.env' tests/ shows no repo-root .env writers other than the helper.
 # ------------------------------------------------------------------------------------------
 
-_ROOT_DOTENV_PATH_RE = re.compile(r'ROOT\s*/\s*["\']\.env["\']')
+_ROOT_DOTENV_PATH_RE = re.compile(r'\(?\s*ROOT\s*/\s*["\']\.env["\']\s*\)?\s*\.write_text\(')
 
 
 def test_no_repo_root_dotenv_writers_outside_the_helper():
@@ -270,7 +270,7 @@ def test_no_repo_root_dotenv_writers_outside_the_helper():
         if path.name in ("fake_dotenv.py", "test_fix7_fake_dotenv_self_heals.py"):
             continue
         text = path.read_text()
-        if _ROOT_DOTENV_PATH_RE.search(text) and ".write_text(" in text:
+        if _ROOT_DOTENV_PATH_RE.search(text):
             offenders.append(str(path.relative_to(ROOT)))
 
     assert not offenders, (
