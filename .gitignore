@@ -4,4 +4,5 @@ logs/
 __pycache__/
 .pytest_cache/
 evals/reports/*.md
+evals/reports/*.jsonl
 !evals/reports/.gitkeep
