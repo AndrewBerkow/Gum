@@ -15,3 +15,7 @@ _ENV_VAR = "GUM_NESTED_SUITE"
 
 def is_nested_suite() -> bool:
     return bool(os.environ.get(_ENV_VAR))
+
+
+def nested_suite_env(base_env: dict[str, str]) -> dict[str, str]:
+    return {**base_env, _ENV_VAR: "1"}
