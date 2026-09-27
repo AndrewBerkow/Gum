@@ -1,5 +1,5 @@
 # Happy path: validation passes on attempt 1, so fix/validate-2/diagnose are skipped.
-# Dry-run auto-approves gates and runs one loop iteration (until_bash isn't evaluated).
+# Dry-run runs one loop iteration (until_bash isn't evaluated).
 decompose: {task_count: 3}
 check-decomposition: "3 tasks OK"
 integration-tests: "stub: integration tests written and committed"
@@ -12,4 +12,4 @@ summarize: "stub: summary written"
 record-progress: {all_done: false, next_title: "SSE server"}
 fixture:
   expect: completed
-  reached: [summarize, approve-next]
+  reached: [summarize, record-progress]

@@ -13,4 +13,4 @@ summarize: "stub: summary written"
 record-progress: {all_done: false, next_title: "SSE server"}
 fixture:
   expect: completed
-  reached: [fix, validate-2, approve-next]
+  reached: [fix, validate-2, record-progress]

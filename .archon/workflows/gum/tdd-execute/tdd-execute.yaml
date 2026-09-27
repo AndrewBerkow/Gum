@@ -5,11 +5,10 @@ description: |
   top-level integration tests first (proven red), micro-task red/green/refactor,
   and top-level validation with one fix attempt. If validation fails a second
   time, write a diagnostic report and halt: fix the code, then
-  `archon workflow resume`. After each task passes, the run pauses for human
-  approval before the next task starts.
-  Use: archon workflow run tdd-execute --branch <name> "Execute PLAN.md"
+  `archon workflow resume`. Runs unattended: no approval gates.
+  Use: archon workflow run tdd-execute --branch <name> "Execute PLAN.md" --detach
 model: large
-interactive: true
+interactive: false
 worktree:
   enabled: true
 inputs:
@@ -32,18 +31,12 @@ nodes:
     runtime: uv
     depends_on: [decompose]
 
-  # approve: start task 1. reject: cancels the run.
-  - id: approve-decomposition
-    depends_on: [check-decomposition]
-    approval:
-      message: "Review the task breakdown in $ARTIFACTS_DIR/tasks.md. Approve to start Sub-Workflow 1, reject to cancel the run."
-
   # ---- 2-4. Per-task sub-workflow, one task per iteration ----
   - id: task-cycle
-    depends_on: [approve-decomposition]
+    depends_on: [check-decomposition]
     loop_group:
       max_iterations: 5
-      # Ends after the last task. Rejecting approve-next cancels the run instead.
+      # Ends after the last task.
       until_bash: 'test "$record-progress.output.all_done" = "true"'
       nodes:
         - id: pick-task
@@ -141,7 +134,7 @@ nodes:
             attempt: "final"
             strict: "true"
 
-        # 4. Completion summary + approval gate
+        # 4. Completion summary
         - id: summarize
           command: summarize
           depends_on: [halt-unless-green]
@@ -160,10 +153,3 @@ nodes:
               next_title: {type: string}
             required: [all_done, next_title]
 
-        # Must stay the body's only terminal node so it pauses the loop.
-        # Last task: skipped, and the run completes.
-        - id: approve-next
-          depends_on: [record-progress]
-          when: "$record-progress.output.all_done == false"
-          approval:
-            message: "Task $pick-task.output.index of $pick-task.output.total completed and validated (summary: $ARTIFACTS_DIR/$pick-task.output.task_id/summary.md). Approve to proceed to next sub-workflow: $record-progress.output.next_title. Reject to stop the run."
