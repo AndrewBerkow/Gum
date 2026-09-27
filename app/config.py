@@ -1,4 +1,5 @@
-from typing import Literal
+import os
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,11 @@ def has_real_key(value: "str | SecretStr | None") -> bool:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+
+    def __init__(self, **data: Any):
+        if "_env_file" not in data:
+            data["_env_file"] = os.environ.get("GUM_ENV_FILE", ".env")
+        super().__init__(**data)
 
     typesafe_api_key: SecretStr | None = None
     google_api_key: SecretStr | None = Field(

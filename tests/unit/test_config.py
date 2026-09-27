@@ -54,3 +54,11 @@ def test_config_error():
 def test_gemini_fallback(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "AIzaTEST123")
     assert Settings(_env_file=None).google_api_key.get_secret_value() == "AIzaTEST123"
+
+
+def test_settings_reads_key_from_custom_gum_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "custom.env"
+    env_file.write_text("TYPESAFE_API_KEY=ts_test_fromfile_1234567890\n")
+    monkeypatch.setenv("GUM_ENV_FILE", str(env_file))
+
+    assert Settings().typesafe_api_key.get_secret_value() == "ts_test_fromfile_1234567890"
