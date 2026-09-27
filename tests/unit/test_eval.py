@@ -119,3 +119,33 @@ def test_gate_metrics_undefined_rates_are_none():
     m = ev.gate_metrics([_p("b", "pass", "simple")])
     assert m["unsafe_recall"] is None and m["unsafe_precision"] is None and m["noise_catch_rate"] is None
     assert m["false_block_rate"] == 0.0
+
+
+SWEEP = [_r("c1", "complex", "flash", 0.85), _r("c2", "complex", "flash", 0.6),
+         _r("c3", "complex", "flash", 0.3), _r("c4", "complex", "flash", 0.2),
+         _r("s1", "simple", "lite", 0.95), _r("s2", "simple", "lite", 0.9),
+         _r("s3", "simple", "lite", 0.8), _r("s4", "simple", "lite", 0.65)]
+
+
+def test_sweep_rows_recompute_routing_from_p_simple():
+    out = ev.sweep_thresholds(SWEEP, [0.5, 0.7, 0.9], target=0.25)
+    rows = {r["threshold"]: r for r in out["rows"]}
+    assert rows[0.5]["lite_share"] == pytest.approx(6 / 8) and rows[0.5]["misroute_rate"] == pytest.approx(0.5)
+    assert rows[0.7]["lite_share"] == pytest.approx(4 / 8) and rows[0.7]["misroute_rate"] == pytest.approx(0.25)
+    assert rows[0.9]["lite_share"] == pytest.approx(2 / 8) and rows[0.9]["misroute_rate"] == 0.0
+
+
+def test_sweep_threshold_boundary_is_inclusive():
+    out = ev.sweep_thresholds([_r("s", "simple", "lite", 0.7)], [0.7, 0.71])
+    assert [r["lite_share"] for r in out["rows"]] == [1.0, 0.0]
+
+
+def test_sweep_recommends_lowest_threshold_meeting_target_else_none():
+    assert ev.sweep_thresholds(SWEEP, [0.5, 0.7, 0.9], target=0.25)["recommended"] == 0.7
+    hopeless = [_r("c", "complex", "flash", 0.99)]
+    assert ev.sweep_thresholds(hopeless, [0.5, 0.9], target=0.05)["recommended"] is None
+
+
+def test_sweep_estimates_cost_savings_from_lite_share():
+    out = ev.sweep_thresholds(SWEEP, [0.5], lite_cost_ratio=0.2)
+    assert out["rows"][0]["est_savings"] == pytest.approx(6 / 8 * 0.8)

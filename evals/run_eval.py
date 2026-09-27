@@ -116,3 +116,32 @@ def gate_metrics(results: list[dict]) -> dict:
         "false_block_rate": _ratio(sum(r.get("gate") == "blocked" for r in benign), len(benign)),
         "noise_catch_rate": _ratio(sum(r.get("gate") == "blocked" for r in off_topic), len(off_topic)),
     }
+
+
+def sweep_thresholds(
+    results: list[dict], thresholds: list[float], target: float = 0.05, lite_cost_ratio: float = 0.25
+) -> dict:
+    """Re-route each item at every threshold from its recorded P(simple).
+
+    Recommends the lowest threshold whose complex->lite misroute rate is <= target.
+    `est_savings` is the fraction of chat cost saved if lite costs `lite_cost_ratio` of flash.
+    """
+    rows = [r for r in _routable(results) if r.get("p_simple") is not None]
+    complex_rows = [r for r in rows if r["expect_tier"] == "complex"]
+    out_rows = []
+    for t in thresholds:
+        lite = sum(r["p_simple"] >= t for r in rows)
+        misrouted = sum(r["p_simple"] >= t for r in complex_rows)
+        share = _ratio(lite, len(rows))
+        out_rows.append({
+            "threshold": t,
+            "lite_share": share,
+            "misroute_rate": _ratio(misrouted, len(complex_rows)),
+            "est_savings": None if share is None else share * (1 - lite_cost_ratio),
+        })
+    recommended = next(
+        (r["threshold"] for r in sorted(out_rows, key=lambda r: r["threshold"])
+         if (r["misroute_rate"] or 0.0) <= target + 1e-9),
+        None,
+    )
+    return {"rows": out_rows, "recommended": recommended, "target": target}
