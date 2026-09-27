@@ -28,3 +28,10 @@ def test_readme_has_live_jev_demo_heading():
     assert any(
         ln.lstrip().startswith("#") and "live jev demo" in ln.lower() for ln in lines
     ), "README.md must have a 'Live Jev demo' heading"
+
+
+def test_readme_demo_section_has_live_run_command():
+    section = _demo_section()
+    assert "uv run uvicorn app.main:app --port 8000" in section, (
+        "the demo section must document the live run command on port 8000"
+    )

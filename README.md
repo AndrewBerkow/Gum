@@ -96,6 +96,12 @@ for the full policy (thresholds, the ambiguous-scope zone, fail-closed behavior,
 
 ## Live Jev demo
 
+Run the app with a real `.env` in place (see "Live mode" above):
+
+```
+uv run uvicorn app.main:app --port 8000
+```
+
 ## Reading the eval report
 
 `uv run python evals/run_eval.py --backend stub` (or `--backend live`, once keys exist) writes a
