@@ -186,10 +186,98 @@ function saveDevlogVisible(visible, storage) {
   } catch (e) { /* private browsing / disabled storage: ignore */ }
 }
 
+function _el(tag, attrs, children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "text") e.textContent = v;
+    else if (k.startsWith("data-")) e.setAttribute(k, v);
+    else if (k === "style") e.setAttribute("style", v);
+    else e.setAttribute(k, v);
+  }
+  for (const c of children || []) e.appendChild(c);
+  return e;
+}
+
+function _threshMarker(threshold) {
+  return _el("div", {
+    "data-testid": "devlog-threshold-marker",
+    style: `position:absolute;top:0;bottom:0;left:${devlogBarPct(threshold) * 100}%;width:2px;`,
+  });
+}
+
+function _questionBar(name, question) {
+  const track = _el("div", {
+    "data-testid": "devlog-bar",
+    "data-question": name,
+    style: "position:relative;width:100%;height:10px;",
+  });
+  if (name === "scope") {
+    let offset = 0;
+    for (const { label, p } of scopeBars(question)) {
+      const seg = _el("div", {
+        "data-testid": "devlog-scope-bar",
+        "data-label": label,
+        style: `position:absolute;top:0;bottom:0;left:${offset * 100}%;width:${devlogBarPct(p) * 100}%;`,
+      });
+      offset += p;
+      track.appendChild(seg);
+    }
+  } else {
+    const value = name === "unsafe" ? question.p : question.p_simple;
+    track.appendChild(_el("div", {
+      class: "devlog-bar-fill",
+      style: `position:absolute;top:0;bottom:0;left:0;width:${devlogBarPct(value) * 100}%;`,
+    }));
+  }
+  track.appendChild(_threshMarker(question.threshold));
+  return _el("div", { class: "devlog-question" }, [
+    _el("div", { class: "devlog-question-label", text: name }),
+    track,
+  ]);
+}
+
+function _rawSection(kind, obj) {
+  const toggle = _el("button", { "data-testid": `devlog-${kind}-toggle`, type: "button", text: `▸ ${kind}` });
+  const json = _el("pre", { "data-testid": `devlog-${kind}-json`, hidden: "" });
+  json.textContent = JSON.stringify(obj ?? null, null, 2);
+  toggle.addEventListener("click", () => { json.hidden = !json.hidden; });
+  return [toggle, json];
+}
+
+function buildDevlogCard(turn, index) {
+  const badge = devlogBadge(turn);
+  const preview = (turn.message || "").slice(0, 60);
+  const time = turn.ts ? new Date(turn.ts).toLocaleTimeString() : "";
+  const card = _el("div", { "data-testid": "devlog-card", "data-outcome": turn.outcome || "" });
+  card.appendChild(_el("div", { class: "devlog-card-header" }, [
+    _el("span", { class: "devlog-time", text: time }),
+    _el("span", { class: "devlog-turn-index", text: `#${index}` }),
+    _el("span", { class: "devlog-preview", text: preview }),
+    _el("span", { class: `devlog-badge ${badge.cls}`, text: badge.text }),
+  ]));
+  if (turn.decision && turn.decision.unsafe != null) {
+    const bars = _el("div", { class: "devlog-bars" }, [
+      _questionBar("unsafe", turn.decision.unsafe),
+      _questionBar("scope", turn.decision.scope),
+      _questionBar("complexity", turn.decision.complexity),
+    ]);
+    card.appendChild(bars);
+  }
+  if (turn.decision && turn.decision.explanation) {
+    card.appendChild(_el("div", { class: "devlog-oneliner", text: turn.decision.explanation }));
+  }
+  card.appendChild(_el("div", { "data-testid": "devlog-timing", text: devlogTimingText(turn) }));
+  const raw = _el("div", { class: "devlog-raw" });
+  for (const c of _rawSection("request", turn.request)) raw.appendChild(c);
+  for (const c of _rawSection("response", turn.response)) raw.appendChild(c);
+  card.appendChild(raw);
+  return card;
+}
+
 window.Gum = {
   createSSEParser, formatGuardrail, formatRoute, formatFooter, parseCommand, createHistory,
   formatStats, nearBottom, mergeDevlogEvent, devlogBadge, devlogTimingText, devlogBarPct,
-  scopeBars, loadDevlogVisible, saveDevlogVisible,
+  scopeBars, loadDevlogVisible, saveDevlogVisible, buildDevlogCard,
 };
 
 // ---- app wiring ----

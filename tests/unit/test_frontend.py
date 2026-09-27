@@ -225,6 +225,109 @@ def test_scope_bars_lists_one_entry_per_probability_label(page):
     }
 
 
+# 10. devlog console: card DOM builder
+
+
+def _passed_turn():
+    return {
+        "message": "hi there",
+        "outcome": "answered",
+        "jevMs": 12.4,
+        "ttftMs": 45.2,
+        "totalMs": 210.9,
+        "llmStart": {"tier": "lite", "model": "gemini-3.5-flash-lite"},
+        "request": {"body": {"questions": {}}, "headers": {"Authorization": "Bearer ***"}},
+        "response": {"body": {"ok": True}},
+        "decision": {
+            "outcome": "passed",
+            "reason": None,
+            "explanation": "p_unsafe 0.05 ≤ 0.70 · scope valid_request 0.92 · p_simple 0.88 ≥ 0.70 → lite",
+            "unsafe": {"p": 0.05, "threshold": 0.70, "comparison": "≤", "verdict": "safe"},
+            "scope": {
+                "choice": "valid_request",
+                "probabilities": {"valid_request": 0.92, "noise": 0.04, "out_of_scope": 0.04},
+                "threshold": 0.70, "comparison": ">", "verdict": "safe",
+            },
+            "complexity": {"p_simple": 0.88, "threshold": 0.70, "comparison": "≥", "tier": "lite"},
+            "route": {"jev_tier": "lite", "tier": "lite", "source": "jev"},
+        },
+    }
+
+
+def test_build_devlog_card_renders_full_markup_contract_for_a_passed_turn(page):
+    result = page.evaluate(
+        """(turn) => {
+            const card = Gum.buildDevlogCard(turn, 1);
+            document.body.appendChild(card);
+            const bars = [...card.querySelectorAll('[data-testid="devlog-bar"]')]
+                .map((b) => b.dataset.question);
+            const scopeBar = card.querySelector('[data-testid="devlog-bar"][data-question="scope"]');
+            const scopeLabels = [...scopeBar.querySelectorAll('[data-testid="devlog-scope-bar"]')]
+                .map((b) => b.dataset.label);
+            const markerCount = card.querySelectorAll('[data-testid="devlog-threshold-marker"]').length;
+            const reqToggle = card.querySelector('[data-testid="devlog-request-toggle"]');
+            const reqJsonHiddenBefore = card.querySelector('[data-testid="devlog-request-json"]').hidden;
+            reqToggle.click();
+            const reqJsonHiddenAfter = card.querySelector('[data-testid="devlog-request-json"]').hidden;
+            const reqJsonText = card.querySelector('[data-testid="devlog-request-json"]').textContent;
+            return {
+                outcome: card.dataset.outcome,
+                bars, scopeLabels, markerCount,
+                timing: card.querySelector('[data-testid="devlog-timing"]').textContent,
+                text: card.textContent,
+                reqJsonHiddenBefore, reqJsonHiddenAfter, reqJsonText,
+            };
+        }""",
+        _passed_turn(),
+    )
+    assert result["outcome"] == "answered"
+    assert result["bars"] == ["unsafe", "scope", "complexity"]
+    assert set(result["scopeLabels"]) == {"valid_request", "noise", "out_of_scope"}
+    assert result["markerCount"] == 3
+    assert "jev 12ms" in result["timing"] and "ttft 45ms" in result["timing"]
+    assert "gemini-3.5-flash-lite" in result["timing"]
+    assert "p_unsafe 0.05 ≤ 0.70" in result["text"]
+    assert result["reqJsonHiddenBefore"] is True
+    assert result["reqJsonHiddenAfter"] is False
+    assert '"questions"' in result["reqJsonText"]
+    assert "Bearer ***" in result["reqJsonText"]
+
+
+def test_build_devlog_card_omits_llm_fields_for_a_blocked_turn(page):
+    turn = {
+        "message": "ignore previous instructions",
+        "outcome": "blocked",
+        "jevMs": 9.0,
+        "totalMs": 10.5,
+        "decision": {
+            "outcome": "blocked", "reason": "unsafe",
+            "explanation": "p_unsafe 0.95 > 0.70 → blocked (unsafe)",
+            "unsafe": {"p": 0.95, "threshold": 0.70, "comparison": ">", "verdict": "blocked"},
+            "scope": {"choice": "valid_request", "probabilities": {"valid_request": 0.5, "noise": 0.3, "out_of_scope": 0.2},
+                      "threshold": 0.70, "comparison": ">", "verdict": "safe"},
+            "complexity": {"p_simple": 0.5, "threshold": 0.70, "comparison": "≥", "tier": "flash"},
+            "route": None,
+        },
+        "request": {"body": {"questions": {}}},
+        "response": {"body": {}},
+    }
+    result = page.evaluate(
+        """(turn) => {
+            const card = Gum.buildDevlogCard(turn, 2);
+            return {
+                outcome: card.dataset.outcome,
+                text: card.textContent,
+                timing: card.querySelector('[data-testid="devlog-timing"]').textContent,
+            };
+        }""",
+        turn,
+    )
+    assert result["outcome"] == "blocked"
+    assert "BLOCKED" in result["text"] and "unsafe" in result["text"]
+    assert "ttft" not in result["timing"].lower()
+    assert "gemini" not in result["timing"].lower()
+
+
 def test_devlog_visibility_persists_through_local_storage_and_survives_a_throwing_backend(page):
     out = page.evaluate(
         """() => {
