@@ -124,6 +124,115 @@ function formatStats(stats) {
 const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 24;
 
 window.Gum = { createSSEParser, formatGuardrail, formatRoute, formatFooter, parseCommand, createHistory, formatStats, nearBottom };
+
+// ---- app wiring ----
+const logEl = document.getElementById("log");
+const inputEl = document.getElementById("input");
+const prefixEl = document.getElementById("prefix");
+const bannerEl = document.getElementById("banner");
+const history = createHistory();
+let tier = "auto";
+let stick = true;
+let queue = Promise.resolve();
+
+const newThreadId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+function threadId() {
+  let id = sessionStorage.getItem("thread_id");
+  if (!id) { id = newThreadId(); sessionStorage.setItem("thread_id", id); }
+  return id;
+}
+
+function scrollDown() { if (stick) logEl.scrollTop = logEl.scrollHeight; }
+logEl.addEventListener("scroll", () => { stick = nearBottom(logEl); });
+
+function line(text, cls) {
+  const el = document.createElement("div");
+  if (cls) el.className = cls;
+  el.textContent = text;
+  logEl.appendChild(el);
+  scrollDown();
+  return el;
+}
+
+function setPrefix() { prefixEl.textContent = `[${tier}] >`; }
+
+async function handleEvent(ev, turn) {
+  const d = ev.data;
+  if (ev.event === "guardrail") { const f = formatGuardrail(d); line(f.text, f.cls); }
+  else if (ev.event === "route") { const f = formatRoute(d); line(f.text, f.cls); }
+  else if (ev.event === "token") {
+    if (!turn.out) turn.out = line("", "");
+    turn.out.textContent += d.text;
+    scrollDown();
+  } else if (ev.event === "error") line(`[ERROR: ${d.message}]`, "red");
+  else if (ev.event === "done") { const f = formatFooter(d); if (f) line(f, "dim"); }
+}
+
+async function chat(message) {
+  const turn = { out: null };
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_id: threadId(), message, tier }),
+    });
+    if (!res.ok || !res.body) { line(`[ERROR: HTTP ${res.status}]`, "red"); return; }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    const parser = createSSEParser();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const ev of parser.push(decoder.decode(value, { stream: true }))) await handleEvent(ev, turn);
+    }
+  } catch (e) {
+    line(`[ERROR: ${e.message}]`, "red");
+  }
+}
+
+async function showStats() {
+  try {
+    const res = await fetch("/api/stats");
+    line(formatStats(await res.json()), "dim");
+  } catch (e) { line(`[ERROR: ${e.message}]`, "red"); }
+}
+
+async function submit(text) {
+  const cmd = parseCommand(text);
+  if (!cmd) { line(`[${tier}] > ${text}`, "user"); await chat(text); return; }
+  line(`${prefixEl.textContent} ${text}`, "user");
+  if (cmd.name === "model") {
+    if (["auto", "flash", "lite"].includes(cmd.arg)) { tier = cmd.arg; setPrefix(); line(`model override: ${tier}`, "dim"); }
+    else line("usage: /model auto|flash|lite", "amber");
+  } else if (cmd.name === "stats") await showStats();
+  else if (cmd.name === "clear") {
+    sessionStorage.setItem("thread_id", newThreadId());
+    logEl.textContent = "";
+    stick = true;
+  } else line(`unknown command: /${cmd.name}`, "amber");
+}
+
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = "";
+    history.add(text);
+    queue = queue.then(() => submit(text)).catch(() => {});
+  } else if (e.key === "ArrowUp") { e.preventDefault(); inputEl.value = history.up(inputEl.value); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); inputEl.value = history.down(); }
+});
+
+fetch("/healthz").then((r) => r.json()).then((h) => {
+  if (h.jev_backend === "stub") {
+    bannerEl.textContent = "OFFLINE — stub Jev and fake chat models; no API keys in use";
+    bannerEl.style.display = "block";
+  }
+}).catch(() => {});
+
+setPrefix();
+threadId();
+inputEl.focus();
 </script>
 </body>
 </html>
