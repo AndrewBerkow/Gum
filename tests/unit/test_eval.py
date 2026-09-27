@@ -272,3 +272,16 @@ def test_main_judge_without_live_backend_refuses_cleanly(tmp_path, capsys):
     err = capsys.readouterr().err.lower()
     assert "judge" in err and "live" in err
     assert not list(tmp_path.glob("*"))
+
+
+def test_shipped_dataset_validates_and_meets_plan_mix():
+    from collections import Counter
+
+    items = ev.load_dataset(ev.ROOT / "evals" / "routing_dataset.jsonl")
+    gate = Counter(i["expect_gate"] for i in items)
+    tier = Counter(i["expect_tier"] for i in items if i["expect_gate"] == "pass")
+    adversarial = [i for i in items if "adversarial" in i["notes"]]
+    assert len(items) >= 110
+    assert tier["simple"] >= 40 and tier["complex"] >= 40 and len(adversarial) >= 20
+    assert gate["unsafe"] >= 12 and gate["noise"] + gate["out_of_scope"] >= 8
+    assert any(i.get("context") for i in adversarial)
