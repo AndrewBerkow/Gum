@@ -56,7 +56,74 @@ function createSSEParser() {
   };
 }
 
-window.Gum = { createSSEParser };
+const num = (x, d) => Number(x).toFixed(d);
+
+function formatGuardrail(d) {
+  const conf = d.confidence == null ? "" : ` (${num(d.confidence, 2)})`;
+  const ms = d.latency_ms == null ? "" : ` ${Math.round(d.latency_ms)}ms`;
+  if (d.status === "passed") return { text: `[JEV GUARDRAIL: PASSED${conf}]${ms}`, cls: "green" };
+  if (d.status === "blocked") return { text: `[JEV GUARDRAIL: BLOCKED — ${d.reason}${conf}]${ms}`, cls: "red" };
+  return { text: `[JEV GUARDRAIL: ERROR — fail-closed]${ms}`, cls: "amber" };
+}
+
+function formatRoute(r) {
+  const jevConf = num(r.jev_tier === "lite" ? r.p_simple : 1 - r.p_simple, 2);
+  if (r.source === "override") {
+    return { text: `[JEV ROUTE: ${r.tier} (override; jev→${r.jev_tier} ${jevConf})]`, cls: "yellow" };
+  }
+  const label = r.tier === "lite" ? "simple" : "complex";
+  return { text: `[JEV ROUTE: ${r.tier} ← ${label} (${jevConf})]`, cls: r.tier === "lite" ? "cyan" : "magenta" };
+}
+
+function formatFooter(d) {
+  if (!d.model) return null;
+  const parts = [d.model];
+  const lat = d.latency_ms || {};
+  if (lat.ttft != null) parts.push(`ttft ${Math.round(lat.ttft)}ms`);
+  if (d.usage) parts.push(`${d.usage.input_tokens}→${d.usage.output_tokens} tok`);
+  if (d.cost_usd != null) parts.push(`$${num(d.cost_usd, 5)}`);
+  return "  · " + parts.join(" · ");
+}
+
+function parseCommand(s) {
+  const m = /^\/(\w+)\s*(.*)$/.exec(s.trim());
+  return m ? { name: m[1], arg: m[2].trim() } : null;
+}
+
+function createHistory() {
+  const items = [];
+  let pos = 0;
+  let draft = "";
+  return {
+    add(s) { if (s && items[items.length - 1] !== s) items.push(s); pos = items.length; },
+    up(current) {
+      if (pos === items.length) draft = current;
+      if (pos > 0) pos--;
+      return items.length ? items[pos] : current;
+    },
+    down() {
+      if (pos >= items.length) return draft;
+      pos++;
+      return pos === items.length ? draft : items[pos];
+    },
+  };
+}
+
+function formatStats(stats) {
+  const rows = [];
+  const cell = (v) => (v == null ? "—" : typeof v === "number" ? String(Math.round(v * 100) / 100) : String(v));
+  for (const [k, v] of Object.entries(stats)) {
+    if (v && typeof v === "object") {
+      for (const [k2, v2] of Object.entries(v)) rows.push([`${k}.${k2}`, cell(v2)]);
+    } else rows.push([k, cell(v)]);
+  }
+  const width = Math.max(0, ...rows.map((r) => r[0].length)) + 2;
+  return rows.map(([k, v]) => k.padEnd(width) + v).join("\n");
+}
+
+const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+
+window.Gum = { createSSEParser, formatGuardrail, formatRoute, formatFooter, parseCommand, createHistory, formatStats, nearBottom };
 </script>
 </body>
 </html>
