@@ -6,11 +6,14 @@ import json
 from collections.abc import AsyncIterator, Callable
 from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 import anyio
 from langchain_core.messages import HumanMessage
 
+from app import devlog
 from app.config import Settings
+from app.devlog import DevLogBus
 from app.telemetry import TurnRecord, cost, counterfactual_flash_cost
 
 CHAT_NODES = ("chat_lite", "chat_flash")
@@ -36,8 +39,13 @@ async def stream_turn(
     *,
     settings: Settings | None = None,
     on_record: Callable[[TurnRecord], Any] | None = None,
+    bus: DevLogBus | None = None,
 ) -> AsyncIterator[dict[str, str]]:
-    """Yield guardrail, route?, token*, error?, done. `on_record` gets the TurnRecord exactly once."""
+    """Yield guardrail, route?, token*, error?, done. `on_record` gets the TurnRecord exactly once.
+
+    When `bus` is given, publishes the dev-log event sequence for the turn (`turn.start`,
+    `llm.start`/`llm.first_token`/`llm.done` on the passed path, `turn.end`); see `app.devlog`.
+    """
     config = {"configurable": {"thread_id": thread_id}}
     prior = (await graph.aget_state(config)).values.get("messages", [])
     record = TurnRecord(
@@ -50,6 +58,11 @@ async def stream_turn(
     usage: dict[str, int] | None = None
     passed = False
     recorded = False
+    llm_started = False
+    token_count = 0
+    devlog_token = devlog.start_turn(bus, str(uuid4())) if bus is not None else None
+    if devlog_token is not None:
+        devlog.emit("turn.start", thread_id=thread_id, requested_tier=requested_tier, message=message)
 
     async def finish() -> None:
         nonlocal recorded
@@ -68,6 +81,13 @@ async def stream_turn(
             record.counterfactual_flash_cost_usd = counterfactual_flash_cost(
                 usage, settings.model_prices, settings.chat_model_flash
             )
+        if record.error or (record.jev_decision and record.jev_decision.get("status") == "error"):
+            outcome = "error"
+        elif passed:
+            outcome = "answered"
+        else:
+            outcome = "blocked"
+        devlog.emit("turn.end", outcome=outcome, total_ms=record.latency_ms["total"])
         if on_record is not None:
             with anyio.CancelScope(shield=True):
                 result = on_record(record)
@@ -88,6 +108,10 @@ async def stream_turn(
                     yield _event("guardrail", update["jev_decision"])
                     if update["route"]:
                         yield _event("route", update["route"])
+                        devlog.emit(
+                            "llm.start", tier=update["route"]["tier"], model=update["route"]["model"]
+                        )
+                        llm_started = True
                     if not passed:
                         yield _event("token", {"text": _text(update["messages"][0].content)})
                 elif mode == "messages":
@@ -100,9 +124,13 @@ async def stream_turn(
                         usage["output_tokens"] += chunk.usage_metadata["output_tokens"]
                     text = _text(chunk.content)
                     if text:
+                        token_count += 1
                         if ttft is None:
                             ttft = (perf_counter() - started) * 1000
+                            devlog.emit("llm.first_token", ttft_ms=ttft)
                         yield _event("token", {"text": text})
+            if llm_started:
+                devlog.emit("llm.done", token_count=token_count, usage=usage)
         except Exception as exc:
             record.error = f"{type(exc).__name__}: {exc}"
             yield _event("error", {"message": str(exc) or type(exc).__name__})
@@ -123,3 +151,5 @@ async def stream_turn(
         raise
     finally:
         await finish()
+        if devlog_token is not None:
+            devlog.end_turn(devlog_token)
