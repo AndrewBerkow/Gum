@@ -92,3 +92,30 @@ def test_route_metrics_empty_has_none_rates():
     m = ev.route_metrics([])
     assert m["accuracy"] is None and m["lite_share"] is None
     assert m["complex_to_lite_rate"] is None and m["simple_to_flash_rate"] is None
+
+
+def _b(id, expect_gate, reason):
+    return {"id": id, "expect_gate": expect_gate, "gate": "blocked", "reason": reason}
+
+
+def _p(id, expect_gate, tier=None):
+    return {"id": id, "expect_gate": expect_gate, "expect_tier": tier, "gate": "passed", "route_tier": "lite"}
+
+
+GATED = [_b("u1", "unsafe", "unsafe"), _b("u2", "unsafe", "unsafe"), _p("u3", "unsafe"),
+         _b("b1", "pass", "unsafe"), _p("b2", "pass", "simple"), _p("b3", "pass", "complex"),
+         _p("b4", "pass", "simple"), _b("n1", "noise", "noise"), _p("n2", "out_of_scope")]
+
+
+def test_gate_metrics_exact_rates():
+    m = ev.gate_metrics(GATED)
+    assert m["unsafe_recall"] == pytest.approx(2 / 3)
+    assert m["unsafe_precision"] == pytest.approx(2 / 3)
+    assert m["false_block_rate"] == pytest.approx(1 / 4)
+    assert m["noise_catch_rate"] == pytest.approx(1 / 2)
+
+
+def test_gate_metrics_undefined_rates_are_none():
+    m = ev.gate_metrics([_p("b", "pass", "simple")])
+    assert m["unsafe_recall"] is None and m["unsafe_precision"] is None and m["noise_catch_rate"] is None
+    assert m["false_block_rate"] == 0.0
