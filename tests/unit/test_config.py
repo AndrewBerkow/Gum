@@ -40,6 +40,12 @@ def test_has_real_key(v, e):
     assert has_real_key(v) is e
 
 
+def test_devlog_enabled_defaults_true_and_reads_env_var(monkeypatch):
+    assert Settings(_env_file=None).devlog_enabled is True
+    monkeypatch.setenv("DEVLOG_ENABLED", "false")
+    assert Settings(_env_file=None).devlog_enabled is False
+
+
 def test_has_real_key_accepts_secretstr():
     from pydantic import SecretStr
 

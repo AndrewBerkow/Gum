@@ -54,6 +54,7 @@ class Settings(BaseSettings):
 
     log_messages: bool = False
     decision_log_path: str = "logs/decisions.jsonl"
+    devlog_enabled: bool = True
     # TODO(T13-verify): MODEL_PRICES is empty until a human fills it in from Google's Gemini API
     # pricing page (see T13); until then cost fields stay null rather than using a guessed price.
     model_prices: dict[str, Price] = {}
