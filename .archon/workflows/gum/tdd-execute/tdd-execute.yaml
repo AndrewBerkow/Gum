@@ -71,6 +71,7 @@ nodes:
           command: implement
           model: '@coder'
           depends_on: [tests-red]
+          context: fresh
 
         # 3.4 Top-level validation, attempt 1
         - id: validate-1
@@ -95,6 +96,7 @@ nodes:
         - id: fix-1
           command: fix
           model: '@coder'
+          context: fresh  # resuming the large implement session made the provider return nothing
           depends_on: [validate-1]
           when: "$validate-1.output.passed == false"
           with:
@@ -121,6 +123,7 @@ nodes:
         - id: fix-2
           command: fix
           model: '@coder'
+          context: fresh  # resuming the large implement session made the provider return nothing
           depends_on: [validate-2]
           when: "$validate-2.output.passed == false"
           with:
@@ -147,6 +150,7 @@ nodes:
         - id: fix-3
           command: fix
           model: '@coder'
+          context: fresh  # resuming the large implement session made the provider return nothing
           depends_on: [validate-3]
           when: "$validate-3.output.passed == false"
           with:
