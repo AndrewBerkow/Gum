@@ -146,8 +146,10 @@ def test_settings_reads_default_dotenv_in_cwd_when_gum_env_file_unset(tmp_path):
 
 
 # ------------------------------------------------------------------------------------------
-# AC: tests/conftest.py sets GUM_ENV_FILE="" at import time, and keeps the autouse fixture that
-# clears key variables.
+# AC: tests/conftest.py's setdefault keeps offline tests reading no keys -- GUM_ENV_FILE is ""
+# (its own default) or, when a parent suite has deliberately preset it to a path (e.g. a nested
+# suite hiding a real repo-root .env behind an empty temp file), a file containing no key
+# variables -- and keeps the autouse fixture that clears key variables.
 # ------------------------------------------------------------------------------------------
 
 
@@ -157,9 +159,16 @@ def test_conftest_sets_gum_env_file_empty_string_at_import_time():
         cwd=ROOT, capture_output=True, text=True, timeout=10,
     )
     assert r.returncode == 0, r.stdout + r.stderr
-    assert r.stdout.strip() == "''", (
-        f"tests/conftest.py must set GUM_ENV_FILE='' in os.environ at import time, got: {r.stdout!r}"
-    )
+    gum_env_file = eval(r.stdout.strip())  # noqa: S307 -- our own repr() output, not attacker input
+
+    if gum_env_file != "":
+        path = Path(gum_env_file)
+        assert path.exists() and not any(
+            key in path.read_text() for key in ("TYPESAFE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY")
+        ), (
+            f"tests/conftest.py must leave offline tests reading no keys: GUM_ENV_FILE must be "
+            f"'' or point to a file with no key variables, got: {gum_env_file!r}"
+        )
 
 
 def test_conftest_keeps_autouse_fixture_clearing_key_variables():
