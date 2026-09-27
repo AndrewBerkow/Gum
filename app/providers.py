@@ -1,10 +1,20 @@
 """Provider factories: the Jev classifier and the per-tier chat models."""
 
+from collections.abc import Iterator
+from typing import Any
+
 import httpx2
+from langchain.chat_models import init_chat_model
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.messages.ai import UsageMetadata
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_typesafe import TypeSafeClassifier
 
 from app.config import ConfigError, Settings, has_real_key
 from app.jev_stub import make_stub_transport
+from app.state import Tier
 
 _STUB_BASE_URL = "https://typesafe.test"
 
@@ -28,3 +38,69 @@ def build_classifier(settings: Settings) -> TypeSafeClassifier:
         base_url=settings.typesafe_base_url,
         timeout=settings.guardrail_timeout_s,
     )
+
+
+class FakeChatModel(BaseChatModel):
+    """Offline chat model: echoes the last human message, streamed word by word."""
+
+    tier: str
+
+    @property
+    def _llm_type(self) -> str:
+        return "offline-fake"
+
+    def _reply(self, messages: list[BaseMessage]) -> tuple[list[str], int]:
+        text = next((str(m.content) for m in reversed(messages) if isinstance(m, HumanMessage)), "")
+        return f"[offline:{self.tier}] You said: {text}".split(), len(text.split())
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        words, n_in = self._reply(messages)
+        usage = UsageMetadata(input_tokens=n_in, output_tokens=len(words), total_tokens=n_in + len(words))
+        message = AIMessage(" ".join(words), usage_metadata=usage)
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        words, n_in = self._reply(messages)
+        for i, word in enumerate(words):
+            is_last = i == len(words) - 1
+            usage = (
+                UsageMetadata(input_tokens=n_in, output_tokens=len(words), total_tokens=n_in + len(words))
+                if is_last
+                else None
+            )
+            content = word if i == 0 else f" {word}"
+            # chunk_position="last" stops langchain appending an empty usage-less terminal chunk
+            message = AIMessageChunk(
+                content=content, usage_metadata=usage, chunk_position="last" if is_last else None
+            )
+            chunk = ChatGenerationChunk(message=message)
+            if run_manager:
+                run_manager.on_llm_new_token(content, chunk=chunk)
+            yield chunk
+
+
+def build_chat_models(settings: Settings) -> dict[Tier, BaseChatModel]:
+    """Per-tier chat models: offline fakes, or Gemini via init_chat_model with streaming on."""
+    if settings.chat_provider == "fake":
+        return {"flash": FakeChatModel(tier="flash"), "lite": FakeChatModel(tier="lite")}
+    if not has_real_key(settings.google_api_key):
+        raise ConfigError("GOOGLE_API_KEY is missing or a placeholder; set a real key or CHAT_PROVIDER=fake")
+    assert settings.google_api_key is not None
+    api_key = settings.google_api_key.get_secret_value()
+    ids: dict[Tier, str] = {"flash": settings.chat_model_flash, "lite": settings.chat_model_lite}
+    return {
+        tier: init_chat_model(model_id, model_provider="google_genai", streaming=True, api_key=api_key)
+        for tier, model_id in ids.items()
+    }
