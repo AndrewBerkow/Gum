@@ -38,3 +38,22 @@ def test_build_classifier_live_uses_settings_for_model_url_and_timeout():
     assert c.model == "jev-x"
     assert c.base_url == "https://example.test"
     assert c.timeout == 3.0
+
+
+def test_build_classifier_stub_async_client_has_devlog_event_hooks():
+    classifier = build_classifier(s(jev_backend="stub"))
+    hooks = classifier.async_client.event_hooks
+    assert hooks.get("request") and hooks.get("response")
+
+
+def test_build_classifier_live_async_client_has_devlog_hooks_and_configured_timeout():
+    import httpx2
+
+    classifier = build_classifier(
+        s(jev_backend="live", typesafe_api_key="ts_live_test123", guardrail_timeout_s=3.5)
+    )
+    client = classifier.async_client
+    assert client is not None
+    assert client.timeout == httpx2.Timeout(3.5)
+    hooks = client.event_hooks
+    assert hooks.get("request") and hooks.get("response")

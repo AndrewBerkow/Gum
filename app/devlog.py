@@ -120,5 +120,13 @@ def emit(name: str, **fields: Any) -> None:
 
 
 def redact_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Copy `headers` with `Authorization` (any case) replaced by `Bearer ***`."""
-    return {k: ("Bearer ***" if k.lower() == "authorization" else v) for k, v in headers.items()}
+    """Copy `headers`, replacing `Authorization` (any case) with a canonically-cased,
+    redacted `"Authorization": "Bearer ***"` entry -- HTTP clients often lower-case header
+    names, but consumers expect the conventional `Authorization` spelling."""
+    result: dict[str, str] = {}
+    for k, v in headers.items():
+        if k.lower() == "authorization":
+            result["Authorization"] = "Bearer ***"
+        else:
+            result[k] = v
+    return result

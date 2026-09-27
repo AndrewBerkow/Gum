@@ -30,5 +30,6 @@ def test_emit_populates_envelope_fields_and_is_noop_outside_a_turn():
 def test_redact_headers_hides_authorization_case_insensitively():
     headers = {"authorization": "Bearer sk-secret", "Content-Type": "application/json"}
     redacted = redact_headers(headers)
-    assert redacted == {"authorization": "Bearer ***", "Content-Type": "application/json"}
+    # canonical casing: consumers look up "Authorization", regardless of how the client sent it
+    assert redacted == {"Authorization": "Bearer ***", "Content-Type": "application/json"}
     assert headers["authorization"] == "Bearer sk-secret"  # input untouched
