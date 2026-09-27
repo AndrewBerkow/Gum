@@ -32,3 +32,9 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 markers = ["e2e: browser tests", "live: tests needing real API keys"]
 addopts = "-m 'not live' --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost,::1"
+
+[tool.ruff.lint.per-file-ignores]
+# Imported pytest fixtures (browser/page/offline_url) are reused by name as parameters in every
+# test function here; pyflakes can't tell a fixture parameter from a real redefinition, and
+# doesn't count that reuse as a "use" of the import either.
+"tests/integration/test_feat3_console_ui.py" = ["F401", "F811"]
