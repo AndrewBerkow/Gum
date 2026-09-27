@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fake_dotenv import fake_dotenv
+from tests.fake_dotenv import dotenv_present
 from tests.nested_suite import is_nested_suite, nested_suite_env
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,10 +93,11 @@ def _git_status() -> set[str]:
 
 
 def _fake_dotenv_at_repo_root():
-    """Place a fake `.env` at the repo root via the shared tests.fake_dotenv helper (t1 / Fix 7),
-    the only way any test may create one; it refuses to overwrite a real one and always cleans
-    up after itself."""
-    return fake_dotenv(ROOT.joinpath(".env"))
+    """Ensure a `.env` is present at the repo root for the duration of the block: reuse a real
+    one as-is if it already exists there, or create+clean up a fake one via the shared
+    tests.fake_dotenv helper (t1 / Fix 7 / Fix 10) otherwise. Never overwrites or deletes a real
+    `.env`."""
+    return dotenv_present(ROOT.joinpath(".env"))
 
 
 # ------------------------------------------------------------------------------------------

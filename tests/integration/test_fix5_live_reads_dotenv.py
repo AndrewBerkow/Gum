@@ -33,7 +33,7 @@ from langchain_typesafe import TypeSafeClassifier
 
 from app import providers
 from app.jev_stub import make_stub_transport
-from tests.fake_dotenv import fake_dotenv
+from tests.fake_dotenv import dotenv_present
 from tests.nested_suite import is_nested_suite, nested_suite_env
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,10 +107,11 @@ def _git_status() -> set[str]:
 
 
 def _fake_dotenv_at_repo_root():
-    """Place a fake `.env` at the repo root via the shared tests.fake_dotenv helper (t1 / Fix 7),
-    the only way any test may create one; it refuses to overwrite a real one and always cleans
-    up after itself."""
-    return fake_dotenv(ROOT.joinpath(".env"))
+    """Ensure a `.env` is present at the repo root for the duration of the block: reuse a real
+    one as-is if it already exists there, or create+clean up a fake one via the shared
+    tests.fake_dotenv helper (t1 / Fix 7 / Fix 10) otherwise. Never overwrites or deletes a real
+    `.env`."""
+    return dotenv_present(ROOT.joinpath(".env"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -241,6 +242,12 @@ def test_run_eval_backend_stub_keeps_passing_env_file_none(tmp_path, monkeypatch
 
 
 def test_live_tier_reads_repo_root_dotenv_by_default_and_attempts_jev_gated_tests():
+    if ROOT.joinpath(".env").exists():
+        pytest.skip(
+            "a real .env already sits at the repo root; this check needs to write its own "
+            "fake one to control its contents, and must never touch a real user's keys"
+        )
+
     env = _clean_env(TYPESAFE_BASE_URL="http://127.0.0.1:1")
     env.pop("GUM_ENV_FILE", None)  # simulate a real user who never set this
 
