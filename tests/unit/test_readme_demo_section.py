@@ -57,3 +57,14 @@ def test_readme_demo_section_explains_console_elements():
     expected = ["badge", "probability", "threshold", "timing"]
     missing = [kw for kw in expected if kw not in section]
     assert not missing, f"demo section doesn't explain these console elements: {missing}"
+
+
+def test_readme_demo_section_explains_confidence_vs_probability():
+    section = _demo_section().lower()
+    assert "confidence" in section and "probability" in section, (
+        "the demo section must explain confidence vs probability"
+    )
+    assert "concentrat" in section, (
+        "the demo section must explain that confidence measures how concentrated the "
+        "distribution is, not the probability of the chosen label (PLAN.md §0)"
+    )

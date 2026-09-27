@@ -129,6 +129,13 @@ Each card in the console shows:
   vertical **threshold** marker showing the cutoff `p` is compared against.
 - a **timing** strip — Jev latency, time to first token, and total turn time, plus the model id.
 
+**Confidence vs. probability:** each bar's fill is a **probability** (e.g. `p_unsafe`, or
+`probabilities["valid_request"]`) — that's what gets compared against the threshold marker. Jev's
+`confidence` for a `Choice` question is a different number: it measures how *concentrated* the
+whole probability distribution is across labels, not the probability of the label Jev actually
+chose. A high-confidence pick and a high-probability pick usually agree, but they can diverge, so
+the console shows both and routes only on probability.
+
 ## Reading the eval report
 
 `uv run python evals/run_eval.py --backend stub` (or `--backend live`, once keys exist) writes a
