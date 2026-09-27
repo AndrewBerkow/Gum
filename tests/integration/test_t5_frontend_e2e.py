@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
 from app.main import STATIC_DIR, create_app
-from tests.nested_suite import is_nested_suite
+from tests.nested_suite import is_nested_suite, nested_suite_env
 
 ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "static" / "index.html"
@@ -378,7 +378,7 @@ def test_full_not_live_suite_green_with_no_env_file():
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-m", "not live", "-q",
          "--ignore=tests/integration/test_t5_frontend_e2e.py", "-p", "no:cacheprovider"],
-        cwd=ROOT, env=_clean_env(), capture_output=True, text=True, timeout=580,
+        cwd=ROOT, env=nested_suite_env(_clean_env()), capture_output=True, text=True, timeout=580,
     )
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]
 

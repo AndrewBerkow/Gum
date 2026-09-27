@@ -32,3 +32,20 @@ def test_full_suite_spawn_test_skips_when_already_nested(monkeypatch):
 
     with pytest.raises(pytest.skip.Exception):
         t5.test_full_not_live_suite_green_with_no_env_file()
+
+
+def test_full_suite_spawn_test_sets_nested_flag_for_child(monkeypatch):
+    monkeypatch.delenv("GUM_NESTED_SUITE", raising=False)
+    t5 = _load_t5()
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(kwargs.get("env"))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(t5.subprocess, "run", fake_run)
+
+    t5.test_full_not_live_suite_green_with_no_env_file()
+
+    assert len(calls) == 1
+    assert calls[0]["GUM_NESTED_SUITE"] == "1", "the spawned child must be marked as nested"
