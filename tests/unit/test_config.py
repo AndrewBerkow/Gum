@@ -62,3 +62,11 @@ def test_settings_reads_key_from_custom_gum_env_file(tmp_path, monkeypatch):
     monkeypatch.setenv("GUM_ENV_FILE", str(env_file))
 
     assert Settings().typesafe_api_key.get_secret_value() == "ts_test_fromfile_1234567890"
+
+
+def test_settings_reads_no_file_when_gum_env_file_is_empty_string(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("TYPESAFE_API_KEY=ts_test_shouldnotload_123\n")
+    monkeypatch.setenv("GUM_ENV_FILE", "")
+
+    assert Settings().typesafe_api_key is None
