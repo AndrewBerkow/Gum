@@ -1,6 +1,8 @@
 """Offline routing eval: runs the Jev classifier + policy over a labeled dataset and reports metrics."""
 
+import argparse
 import asyncio
+import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -208,3 +210,120 @@ async def run_all(items: list[dict], classifier, settings: Settings, concurrency
             return await evaluate_item(item, classifier, settings)
 
     return list(await asyncio.gather(*(one(i) for i in items)))
+
+
+def _pct(v: float | None) -> str:
+    return "n/a" if v is None else f"{v * 100:.1f}%"
+
+
+def _ms(v: float | None) -> str:
+    return "n/a" if v is None else f"{v:.1f} ms"
+
+
+def render_report(results: list[dict], sweep: dict, *, date, backend: str) -> str:
+    """Markdown report: gate metrics, route metrics, threshold sweep, latency."""
+    gate, route = gate_metrics(results), route_metrics(results)
+    lat = latency_stats([r["latency_ms"] for r in results if "latency_ms" in r])
+    conf = route["confusion"]
+    lines = [
+        f"# Jev routing eval — {date.isoformat()}",
+        "",
+        f"Backend: `{backend}` · items: {len(results)} · routable items: {route['n']}",
+        "",
+        "## Gate metrics",
+        "",
+        f"- Unsafe recall: {_pct(gate['unsafe_recall'])}",
+        f"- Unsafe precision: {_pct(gate['unsafe_precision'])}",
+        f"- Benign false-block rate: {_pct(gate['false_block_rate'])}",
+        f"- Noise / out-of-scope catch rate: {_pct(gate['noise_catch_rate'])}",
+        "",
+        "## Route metrics",
+        "",
+        f"- Accuracy: {_pct(route['accuracy'])}",
+        f"- Complex→lite misroute rate: {_pct(route['complex_to_lite_rate'])}",
+        f"- Simple→flash rate: {_pct(route['simple_to_flash_rate'])}",
+        f"- Lite share: {_pct(route['lite_share'])}",
+        "",
+        "| expected \\ routed | lite | flash |",
+        "|---|---|---|",
+        f"| simple | {conf['simple']['lite']} | {conf['simple']['flash']} |",
+        f"| complex | {conf['complex']['lite']} | {conf['complex']['flash']} |",
+        "",
+        "## Threshold sweep",
+        "",
+        f"Misroute target: {_pct(sweep['target'])} complex→lite.",
+        "",
+        "| threshold | lite share | complex→lite misroute | est. savings |",
+        "|---|---|---|---|",
+    ]
+    for r in sweep["rows"]:
+        lines.append(
+            f"| {r['threshold']:.2f} | {_pct(r['lite_share'])} | {_pct(r['misroute_rate'])} | {_pct(r['est_savings'])} |"
+        )
+    rec = sweep["recommended"]
+    lines += [
+        "",
+        f"**Recommended threshold: {rec:.2f}** (lowest meeting the target)."
+        if rec is not None
+        else "**No threshold in the sweep meets the misroute target** — evidence against routing with Jev.",
+        "",
+        "## Latency (Jev)",
+        "",
+        f"- p50: {_ms(lat['p50'])}",
+        f"- p95: {_ms(lat['p95'])}",
+        f"- max: {_ms(lat['max'])}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_outputs(out_dir, report: str, results: list[dict], date) -> tuple[Path, Path]:
+    """Write the dated markdown report and the raw-results jsonl."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    stem = f"routing-eval-{date.isoformat()}"
+    md, raw = out / f"{stem}.md", out / f"{stem}.jsonl"
+    md.write_text(report)
+    raw.write_text("".join(json.dumps(r) + "\n" for r in results))
+    return md, raw
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Offline routing eval for Jev.")
+    p.add_argument("--backend", choices=["stub", "live"], default="stub")
+    p.add_argument("--threshold-sweep", default="0.5:0.95:0.05", metavar="LO:HI:STEP")
+    p.add_argument("--judge", action="store_true", help="lite-adequacy judge (live backend only)")
+    p.add_argument("--out", default=str(ROOT / "evals" / "reports"))
+    p.add_argument("--dataset", default=str(ROOT / "evals" / "routing_dataset.jsonl"))
+    p.add_argument("--target", type=float, default=0.05, help="complex->lite misroute target (D6)")
+    p.add_argument("--concurrency", type=int, default=8)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.judge and args.backend != "live":
+        parser.error("--judge requires the live backend (use --backend live)")
+    try:
+        thresholds = parse_sweep(args.threshold_sweep)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.backend == "live":
+        parser.error("--backend live runs in T13 and is not available yet")
+
+    from app.providers import build_classifier
+
+    settings = Settings(_env_file=None, jev_backend="stub", chat_provider="fake")
+    items = load_dataset(args.dataset)
+    results = asyncio.run(run_all(items, build_classifier(settings), settings, args.concurrency))
+    today = dt.date.today()
+    sweep = sweep_thresholds(results, thresholds, target=args.target)
+    report = render_report(results, sweep, date=today, backend=args.backend)
+    md, raw = write_outputs(args.out, report, results, today)
+    print(f"wrote {md}\nwrote {raw}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

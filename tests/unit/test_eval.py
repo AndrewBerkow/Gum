@@ -213,3 +213,62 @@ async def test_run_all_preserves_order_and_bounds_concurrency():
     results = await ev.run_all(items, fake, SETTINGS, concurrency=3)
     assert [r["id"] for r in results] == [f"i{n}" for n in range(12)]
     assert 1 < fake.max_active <= 3
+
+
+# ---- report, outputs, CLI
+import datetime as dt  # noqa: E402
+import json  # noqa: E402
+
+REPORT_RESULTS = [*SWEEP, *GATED[:3]]
+for _r_ in REPORT_RESULTS:
+    _r_.setdefault("latency_ms", 12.0)
+
+
+def _report():
+    sweep = ev.sweep_thresholds(REPORT_RESULTS, [0.5, 0.7], target=0.25)
+    return ev.render_report(REPORT_RESULTS, sweep, date=dt.date(2026, 1, 2), backend="stub")
+
+
+def test_render_report_has_every_section_heading():
+    headings = [ln for ln in _report().splitlines() if ln.startswith("#")]
+    text = "\n".join(headings).lower()
+    for section in ("gate metrics", "route metrics", "threshold sweep", "latency"):
+        assert section in text
+
+
+def test_render_report_shows_date_backend_recommendation_and_confusion_counts():
+    text = _report()
+    assert "2026-01-02" in text and "stub" in text
+    assert "0.70" in text and "recommended" in text.lower()
+    assert "complex" in text and "lite" in text and "flash" in text
+
+
+def test_render_report_says_so_when_no_threshold_meets_target():
+    sweep = ev.sweep_thresholds([_r("c", "complex", "flash", 0.99)], [0.5], target=0.05)
+    text = ev.render_report([_r("c", "complex", "flash", 0.99)], sweep, date=dt.date(2026, 1, 2), backend="stub")
+    assert "no threshold" in text.lower()
+
+
+def test_write_outputs_creates_dated_report_and_raw_jsonl(tmp_path):
+    md, raw = ev.write_outputs(tmp_path / "nested", "# hi\n", REPORT_RESULTS, dt.date(2026, 1, 2))
+    assert md.name == "routing-eval-2026-01-02.md" and md.read_text() == "# hi\n"
+    assert raw.name == "routing-eval-2026-01-02.jsonl"
+    assert [json.loads(ln)["id"] for ln in raw.read_text().splitlines()] == [r["id"] for r in REPORT_RESULTS]
+
+
+def test_main_stub_run_writes_report_and_raw_results(tmp_path, capsys):
+    ds = _write(tmp_path, _item("a"), _item("b", text="explain why the sky is blue step by step and compare",
+                                             expect_tier="complex"))
+    code = ev.main(["--backend", "stub", "--dataset", str(ds), "--out", str(tmp_path / "o"),
+                    "--threshold-sweep", "0.5:0.9:0.2"])
+    assert code == 0
+    assert len(list((tmp_path / "o").glob("*.md"))) == 1 and len(list((tmp_path / "o").glob("*.jsonl"))) == 1
+
+
+def test_main_judge_without_live_backend_refuses_cleanly(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        ev.main(["--backend", "stub", "--judge", "--out", str(tmp_path)])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err.lower()
+    assert "judge" in err and "live" in err
+    assert not list(tmp_path.glob("*"))
