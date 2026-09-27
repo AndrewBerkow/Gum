@@ -118,6 +118,9 @@ def _error_decision(latency_ms: float, jev_model: str, request_id: str | None = 
     )
 
 
+# TODO(T13-verify): confirm which response header actually carries `request_id` against the
+# live API; `langchain-typesafe` populates `response.request_id`, but the header name it reads
+# it from isn't documented, only inferred from the client source.
 def evaluate(
     response: ClassifierResponse,
     *,

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     typesafe_base_url: str = "https://api.typesafe.ai"
 
     chat_provider: Literal["google_genai", "fake"] = "google_genai"
+    # TODO(T13-verify): gemini-3.8-flash is newer than the installed langchain-google-genai
+    # release; confirm it actually exists via `models.list` before relying on it (see T13).
     chat_model_flash: str = "gemini-3.8-flash"
     chat_model_lite: str = "gemini-3.5-flash-lite"
 
@@ -46,4 +48,6 @@ class Settings(BaseSettings):
 
     log_messages: bool = False
     decision_log_path: str = "logs/decisions.jsonl"
+    # TODO(T13-verify): MODEL_PRICES is empty until a human fills it in from Google's Gemini API
+    # pricing page (see T13); until then cost fields stay null rather than using a guessed price.
     model_prices: dict[str, Price] = {}
