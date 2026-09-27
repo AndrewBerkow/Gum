@@ -25,7 +25,6 @@ import os
 import re
 import subprocess
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 import httpx2
@@ -34,6 +33,7 @@ from langchain_typesafe import TypeSafeClassifier
 
 from app import providers
 from app.jev_stub import make_stub_transport
+from tests.fake_dotenv import fake_dotenv
 from tests.nested_suite import is_nested_suite, nested_suite_env
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -106,18 +106,11 @@ def _git_status() -> set[str]:
     return {ln for ln in lines if ".pytest_cache" not in ln}
 
 
-@contextmanager
 def _fake_dotenv_at_repo_root():
-    """Place a fake `.env` at the repo root, unless one already exists; never overwrite a real one."""
-    path = ROOT / ".env"
-    created = not path.exists()
-    if created:
-        path.write_text(f"TYPESAFE_API_KEY={_FAKE_TYPESAFE_KEY}\nGOOGLE_API_KEY={_FAKE_GOOGLE_KEY}\n")
-    try:
-        yield
-    finally:
-        if created:
-            path.unlink(missing_ok=True)
+    """Place a fake `.env` at the repo root via the shared tests.fake_dotenv helper (t1 / Fix 7),
+    the only way any test may create one; it refuses to overwrite a real one and always cleans
+    up after itself."""
+    return fake_dotenv(ROOT.joinpath(".env"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -386,7 +379,7 @@ def test_full_not_live_suite_with_fake_dotenv_is_green_and_leaves_git_status_unc
 def test_full_not_live_suite_without_dotenv_is_green_and_leaves_git_status_unchanged():
     if is_nested_suite():
         pytest.skip("already running inside a nested full-suite invocation")
-    assert not (ROOT / ".env").exists(), "this test expects no real .env; found one at repo root"
+    assert not ROOT.joinpath(".env").exists(), "this test expects no real .env; found one at repo root"
 
     before = _git_status()
     r = subprocess.run(
