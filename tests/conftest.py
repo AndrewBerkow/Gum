@@ -8,6 +8,11 @@ import pytest
 # process and in any subprocess that inherits `os.environ`.
 os.environ.setdefault("NO_COLOR", "1")
 
+# Offline tests must never read the developer's .env: GUM_ENV_FILE="" tells Settings() (and every
+# subprocess these tests spawn -- uvicorn, nested pytest, the eval CLI -- since they inherit
+# os.environ) to read no env file, before any Settings is ever built.
+os.environ.setdefault("GUM_ENV_FILE", "")
+
 _CLEARED_PREFIXES = ("LANGCHAIN_", "LANGSMITH_")
 _CLEARED_NAMES = ("TYPESAFE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY")
 
