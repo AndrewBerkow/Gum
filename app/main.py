@@ -22,6 +22,12 @@ class _LazyASGIApp:
 
     def __init__(self, builder: Any) -> None:
         self._builder = builder
+        self._app: Any = None
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if self._app is None:
+            self._app = self._builder()
+        await self._app(scope, receive, send)
 
 
 def create_app(
