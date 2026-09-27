@@ -1,6 +1,11 @@
 """Jev decision layer: one classifier call answers safety, scope and complexity."""
 
-from langchain_core.messages import AnyMessage, HumanMessage
+import asyncio
+import logging
+from time import perf_counter
+from typing import Any
+
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_typesafe import (
     Choice,
     ChoiceAnswer,
@@ -11,7 +16,17 @@ from langchain_typesafe import (
     NoulCriteria,
 )
 
-from app.state import JevDecision, RouteDecision, Tier
+from app.config import Settings
+from app.state import ChatState, JevDecision, RouteDecision, Tier
+
+log = logging.getLogger(__name__)
+
+REJECTION_MESSAGES: dict[str, str] = {
+    "unsafe": "I can't help with that request.",
+    "noise": "I couldn't make sense of that message. Could you rephrase it?",
+    "out_of_scope": "That request is outside what I can help with.",
+    "jev_error": "The safety check is unavailable right now, so I can't process that. Please try again.",
+}
 
 QUESTIONS: dict[str, Noul | Choice] = {
     "unsafe": Noul(
@@ -161,3 +176,48 @@ def evaluate(
         complexity_confidence=complexity.confidence,
     )
     return decision, route
+
+
+def make_jev_gate_node(classifier: Any, settings: Settings):
+    """Return the async `jev_gate` node: one classifier call per turn, fail closed."""
+    tiers: dict[Tier, str] = {"flash": settings.chat_model_flash, "lite": settings.chat_model_lite}
+
+    async def jev_gate(state: ChatState) -> dict[str, Any]:
+        request = build_request(state["messages"], settings.guardrail_context_turns)
+        started = perf_counter()
+        try:
+            response = await asyncio.wait_for(
+                classifier.ainvoke(request), timeout=settings.guardrail_timeout_s
+            )
+        except Exception as exc:  # fail closed on any error, including timeout
+            log.warning("jev call failed: %s", type(exc).__name__)
+            response = None
+        latency_ms = max((perf_counter() - started) * 1000, 1e-6)
+
+        if response is None:
+            decision, route = _error_decision(latency_ms, settings.jev_model), None
+        else:
+            decision, route = evaluate(
+                response,
+                block_threshold=settings.block_threshold,
+                route_lite_threshold=settings.route_lite_threshold,
+                requested_tier=state.get("requested_tier", "auto"),
+                tiers=tiers,
+                latency_ms=latency_ms,
+                jev_model=settings.jev_model,
+            )
+        out: dict[str, Any] = {
+            "guardrail_passed": decision["status"] == "passed",
+            "jev_decision": decision,
+            "route": route,
+        }
+        if decision["status"] != "passed":
+            out["messages"] = [
+                AIMessage(
+                    REJECTION_MESSAGES[decision["reason"] or "jev_error"],
+                    additional_kwargs={"jev_blocked": True},
+                )
+            ]
+        return out
+
+    return jev_gate
