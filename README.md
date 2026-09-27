@@ -94,6 +94,8 @@ never reaches the LLM. A passing turn is routed to the cheap model (`gemini-3.5-
 Jev is confident it's simple, otherwise to the stronger one (`gemini-3.8-flash`). See PLAN.md §1
 for the full policy (thresholds, the ambiguous-scope zone, fail-closed behavior, manual overrides).
 
+## Live Jev demo
+
 ## Reading the eval report
 
 `uv run python evals/run_eval.py --backend stub` (or `--backend live`, once keys exist) writes a
