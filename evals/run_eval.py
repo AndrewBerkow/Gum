@@ -1,5 +1,6 @@
 """Offline routing eval: runs the Jev classifier + policy over a labeled dataset and reports metrics."""
 
+import json
 import sys
 from pathlib import Path
 
