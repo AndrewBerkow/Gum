@@ -1,7 +1,17 @@
 """Jev decision layer: one classifier call answers safety, scope and complexity."""
 
 from langchain_core.messages import AnyMessage, HumanMessage
-from langchain_typesafe import Choice, ClassifierRequest, Noul, NoulCriteria
+from langchain_typesafe import (
+    Choice,
+    ChoiceAnswer,
+    ClassifierRequest,
+    ClassifierResponse,
+    Noul,
+    NoulAnswer,
+    NoulCriteria,
+)
+
+from app.state import JevDecision, RouteDecision, Tier
 
 QUESTIONS: dict[str, Noul | Choice] = {
     "unsafe": Noul(
@@ -76,3 +86,78 @@ def build_request(messages: list[AnyMessage], context_turns: int) -> ClassifierR
         "state": {"latest": messages[idx], "recent": recent},
         "questions": dict(QUESTIONS),
     }
+
+
+def _error_decision(latency_ms: float, jev_model: str, request_id: str | None = None) -> JevDecision:
+    return JevDecision(
+        status="error",
+        reason="jev_error",
+        confidence=0.0,
+        p_unsafe=None,
+        scope=None,
+        scope_probabilities=None,
+        flags=[],
+        latency_ms=latency_ms,
+        jev_model=jev_model,
+        request_id=request_id,
+    )
+
+
+def evaluate(
+    response: ClassifierResponse,
+    *,
+    block_threshold: float,
+    route_lite_threshold: float,
+    requested_tier: str,
+    tiers: dict[Tier, str],
+    latency_ms: float,
+    jev_model: str,
+) -> tuple[JevDecision, RouteDecision | None]:
+    """Gate first (safety outranks scope), then route. Missing answers fail closed."""
+    unsafe = response.answers.get("unsafe")
+    scope = response.answers.get("scope")
+    complexity = response.answers.get("complexity")
+    if not (
+        isinstance(unsafe, NoulAnswer)
+        and isinstance(scope, ChoiceAnswer)
+        and isinstance(complexity, ChoiceAnswer)
+        and "simple" in complexity.probabilities
+    ):
+        return _error_decision(latency_ms, jev_model, response.request_id), None
+
+    p_unsafe = unsafe.noul
+    p_scope = scope.probabilities.get(scope.choice, 0.0)
+    decision = JevDecision(
+        status="passed",
+        reason=None,
+        confidence=min(1 - p_unsafe, scope.probabilities.get("valid_request", 0.0)),
+        p_unsafe=p_unsafe,
+        scope=scope.choice,
+        scope_probabilities=dict(scope.probabilities),
+        flags=[],
+        latency_ms=latency_ms,
+        jev_model=jev_model,
+        request_id=response.request_id,
+    )
+    if p_unsafe > block_threshold:
+        decision.update(status="blocked", reason="unsafe", confidence=p_unsafe)
+        return decision, None
+    if scope.choice != "valid_request":
+        if p_scope > block_threshold:
+            decision.update(status="blocked", reason=scope.choice, confidence=p_scope)
+            return decision, None
+        decision["flags"] = ["ambiguous_scope"]
+
+    p_simple = complexity.probabilities["simple"]
+    jev_tier: Tier = "lite" if p_simple >= route_lite_threshold else "flash"
+    override = requested_tier in ("flash", "lite")
+    tier: Tier = requested_tier if override else jev_tier  # type: ignore[assignment]
+    route = RouteDecision(
+        tier=tier,
+        model=tiers[tier],
+        source="override" if override else "jev",
+        jev_tier=jev_tier,
+        p_simple=p_simple,
+        complexity_confidence=complexity.confidence,
+    )
+    return decision, route
