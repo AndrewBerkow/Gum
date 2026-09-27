@@ -5,29 +5,84 @@
 <title>Gum</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
+  :root {
+    --bg: #0b0e11; --fg: #c9d1d9; --border: #30363d; --user: #e6edf3;
+    --green: #3fb950; --cyan: #39c5cf; --magenta: #d670d6; --yellow: #a8923a;
+    --red: #f85149; --amber: #ffb000; --dim: #6e7681; --accent: #58a6ff;
+    --panel-bg: #10151b; --marker: #ffb000;
+  }
   html, body { height: 100%; margin: 0; overflow: hidden; }
-  body { display: flex; flex-direction: column; background: #0b0e11; color: #c9d1d9;
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
          font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   #banner { display: none; background: #5c3b00; color: #ffcc66; padding: 4px 12px; font-weight: bold; }
+  #app { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+  #chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   #log { flex: 1; overflow-y: auto; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; }
   #log div { min-height: 1.45em; }
-  #bar { display: flex; border-top: 1px solid #30363d; padding: 8px 12px; }
-  #prefix { color: #58a6ff; margin-right: 8px; white-space: nowrap; }
+  #bar { display: flex; border-top: 1px solid var(--border); padding: 8px 12px; }
+  #prefix { color: var(--accent); margin-right: 8px; white-space: nowrap; }
   #input { flex: 1; background: transparent; border: 0; outline: 0; color: inherit; font: inherit; }
-  .user { color: #e6edf3; }
-  .green { color: #3fb950; }
-  .cyan { color: #39c5cf; }
-  .magenta { color: #d670d6; }
-  .yellow { color: #a8923a; }
-  .red { color: #f85149; }
-  .amber { color: #ffb000; }
-  .dim { color: #6e7681; }
+  #divider { flex: 0 0 6px; background: var(--border); cursor: col-resize; }
+  #devlog-panel { flex: 0 0 40%; min-width: 280px; display: flex; flex-direction: column;
+                  min-height: 0; background: var(--panel-bg); border-left: 1px solid var(--border); }
+  #devlog-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+                   border-bottom: 1px solid var(--border); }
+  [data-testid="devlog-status"] { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  [data-testid="devlog-status"][data-state="live"] { background: var(--green); }
+  [data-testid="devlog-status"][data-state="reconnecting"] { background: var(--amber); }
+  [data-testid="devlog-status"][data-state="disabled"] { background: var(--dim); }
+  #devlog-cards { flex: 1; overflow-y: auto; padding: 8px 10px; }
+  [data-testid="devlog-card"] { border: 1px solid var(--border); border-radius: 4px;
+                                 padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+  .devlog-card-header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+  .devlog-time, .devlog-turn-index { color: var(--dim); }
+  .devlog-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .devlog-badge { font-weight: bold; }
+  .devlog-question { margin: 4px 0; }
+  .devlog-question-label { color: var(--dim); font-size: 11px; }
+  [data-testid="devlog-bar"] { background: #1c232c; border-radius: 2px; overflow: visible; }
+  .devlog-bar-fill { background: var(--cyan); border-radius: 2px; }
+  [data-testid="devlog-scope-bar"]:nth-of-type(1) { background: var(--cyan); }
+  [data-testid="devlog-scope-bar"]:nth-of-type(2) { background: var(--magenta); }
+  [data-testid="devlog-scope-bar"]:nth-of-type(3) { background: var(--yellow); }
+  [data-testid="devlog-threshold-marker"] { background: var(--marker); }
+  .devlog-oneliner { color: var(--dim); margin: 4px 0; }
+  [data-testid="devlog-timing"] { color: var(--dim); font-size: 11px; margin: 4px 0; }
+  .devlog-raw button { background: transparent; color: var(--accent); border: 0; font: inherit;
+                        cursor: pointer; padding: 0; margin-right: 10px; }
+  .devlog-raw pre { white-space: pre-wrap; word-break: break-word; background: #06090c;
+                     padding: 6px; border-radius: 3px; }
+  @media (max-width: 900px) {
+    #app { flex-direction: column; }
+    #divider { cursor: row-resize; }
+    #devlog-panel { border-left: none; border-top: 1px solid var(--border); }
+  }
+  .user { color: var(--user); }
+  .green { color: var(--green); }
+  .cyan { color: var(--cyan); }
+  .magenta { color: var(--magenta); }
+  .yellow { color: var(--yellow); }
+  .red { color: var(--red); }
+  .amber { color: var(--amber); }
+  .dim { color: var(--dim); }
 </style>
 </head>
 <body>
 <div id="banner"></div>
-<div id="log"></div>
-<div id="bar"><span id="prefix"></span><input id="input" type="text" autocomplete="off" spellcheck="false" autofocus></div>
+<div id="app">
+  <div id="chat-panel" data-testid="chat-panel">
+    <div id="log"></div>
+    <div id="bar"><span id="prefix"></span><input id="input" type="text" autocomplete="off" spellcheck="false" autofocus></div>
+  </div>
+  <div id="divider"></div>
+  <div id="devlog-panel" data-testid="devlog-panel">
+    <div id="devlog-header">
+      <span data-testid="devlog-status" data-state="reconnecting"></span>
+      <span class="dim">Jev dev console</span>
+    </div>
+    <div id="devlog-cards"></div>
+  </div>
+</div>
 <script>
 "use strict";
 
@@ -364,7 +419,8 @@ async function submit(text) {
     sessionStorage.setItem("thread_id", newThreadId());
     logEl.textContent = "";
     stick = true;
-  } else line(`unknown command: /${cmd.name}`, "amber");
+  } else if (cmd.name === "devlog") toggleDevlogVisible();
+  else line(`unknown command: /${cmd.name}`, "amber");
 }
 
 inputEl.addEventListener("keydown", (e) => {
@@ -388,6 +444,96 @@ fetch("/healthz").then((r) => r.json()).then((h) => {
 setPrefix();
 threadId();
 inputEl.focus();
+
+// ---- devlog console wiring ----
+const appEl = document.getElementById("app");
+const dividerEl = document.getElementById("divider");
+const devlogPanelEl = document.getElementById("devlog-panel");
+const devlogCardsEl = document.getElementById("devlog-cards");
+const devlogStatusEl = document.querySelector('[data-testid="devlog-status"]');
+const devlogTurns = new Map();
+const devlogOrder = [];
+
+let devlogVisible = loadDevlogVisible();
+function setDevlogVisible(visible) {
+  devlogVisible = visible;
+  devlogPanelEl.hidden = !visible;
+  dividerEl.hidden = !visible;
+  saveDevlogVisible(visible);
+}
+function toggleDevlogVisible() { setDevlogVisible(!devlogVisible); }
+setDevlogVisible(devlogVisible);
+
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && (e.key === "\\" || e.code === "Backslash")) {
+    e.preventDefault();
+    toggleDevlogVisible();
+  }
+});
+
+let devlogDragging = false;
+dividerEl.addEventListener("pointerdown", (e) => {
+  devlogDragging = true;
+  dividerEl.setPointerCapture(e.pointerId);
+});
+window.addEventListener("pointerup", () => { devlogDragging = false; });
+window.addEventListener("pointermove", (e) => {
+  if (!devlogDragging) return;
+  const rect = appEl.getBoundingClientRect();
+  const stacked = getComputedStyle(appEl).flexDirection.startsWith("column");
+  if (stacked) {
+    const h = rect.bottom - e.clientY;
+    devlogPanelEl.style.flexBasis = `${Math.max(120, Math.min(rect.height - 120, h))}px`;
+  } else {
+    const w = rect.right - e.clientX;
+    devlogPanelEl.style.flexBasis = `${Math.max(240, Math.min(rect.width - 240, w))}px`;
+  }
+});
+
+function setDevlogStatus(state) { devlogStatusEl.dataset.state = state; }
+
+function renderDevlogCard(turnId) {
+  const turn = devlogTurns.get(turnId);
+  const idx = devlogOrder.indexOf(turnId) + 1;
+  const card = buildDevlogCard(turn, idx);
+  card.dataset.turnId = turnId;
+  const stickBottom = nearBottom(devlogCardsEl);
+  const existing = devlogCardsEl.querySelector(`[data-turn-id="${turnId}"]`);
+  if (existing) existing.replaceWith(card);
+  else devlogCardsEl.appendChild(card);
+  if (stickBottom) devlogCardsEl.scrollTop = devlogCardsEl.scrollHeight;
+}
+
+function handleDevlogEvent(ev) {
+  const turnId = ev.data.turn_id;
+  if (!turnId) return;
+  if (!devlogTurns.has(turnId)) devlogOrder.push(turnId);
+  const prev = devlogTurns.get(turnId) || {};
+  devlogTurns.set(turnId, mergeDevlogEvent(prev, ev.event, ev.data));
+  renderDevlogCard(turnId);
+}
+
+async function connectDevlog() {
+  for (;;) {
+    try {
+      const res = await fetch("/api/devlog");
+      if (res.status === 403 || res.status === 404) { setDevlogStatus("disabled"); return; }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      setDevlogStatus("live");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      const parser = createSSEParser();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        for (const ev of parser.push(decoder.decode(value, { stream: true }))) handleDevlogEvent(ev);
+      }
+    } catch (e) { /* fall through to reconnect */ }
+    setDevlogStatus("reconnecting");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+connectDevlog();
 </script>
 </body>
 </html>
