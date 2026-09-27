@@ -1,6 +1,9 @@
 import os
+from pathlib import Path
 
 import pytest
+
+from tests.fake_dotenv import heal_dotenv
 
 # Several integration tests spawn `pytest` as a subprocess and parse its captured stdout (e.g.
 # for "SKIPPED ..." summary lines). A forced-color terminal (FORCE_COLOR set in the outer shell)
@@ -15,6 +18,17 @@ os.environ.setdefault("GUM_ENV_FILE", "")
 
 _CLEARED_PREFIXES = ("LANGCHAIN_", "LANGSMITH_")
 _CLEARED_NAMES = ("TYPESAFE_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY")
+
+_REPO_ROOT_DOTENV = Path(__file__).resolve().parent.parent / ".env"
+
+
+def pytest_sessionstart(session):
+    """Heal a leftover marked fake `.env` (see tests/fake_dotenv.py) at the start of a fresh
+    top-level session. Skipped in nested suites so a subprocess spawned by a suite-spanning test
+    never deletes a fake `.env` its parent process is still relying on."""
+    if os.environ.get("GUM_NESTED_SUITE"):
+        return
+    heal_dotenv(_REPO_ROOT_DOTENV)
 
 
 @pytest.fixture(autouse=True)
