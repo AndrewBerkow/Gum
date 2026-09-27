@@ -34,6 +34,19 @@ def fake_dotenv(path: Path) -> Iterator[Path]:
         path.unlink(missing_ok=True)
 
 
+@contextmanager
+def dotenv_present(path: Path) -> Iterator[Path]:
+    """Ensure a `.env` exists at `path` for the duration of the block: reuse a pre-existing file
+    as-is (never modified, never removed), or create one via `fake_dotenv` (and clean it up on
+    exit) if none exists."""
+    path = Path(path)
+    if path.exists():
+        yield path
+    else:
+        with fake_dotenv(path) as created_path:
+            yield created_path
+
+
 def heal_dotenv(path: Path) -> None:
     path = Path(path)
     if not path.exists():
