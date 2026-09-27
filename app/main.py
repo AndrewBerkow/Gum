@@ -1,18 +1,22 @@
-"""FastAPI app: /api/chat (SSE), /api/stats, /healthz and the static front end."""
+"""FastAPI app: /api/chat (SSE), /api/devlog (SSE), /api/stats, /healthz and the static front end."""
 
+import json
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import Settings
+from app.devlog import DevLogBus
 from app.graph import build_graph
 from app.providers import build_chat_models, build_classifier
 from app.sse import stream_turn
 from app.telemetry import DecisionLog, Stats, TurnRecord
+
+_LOOPBACK_HOSTS = ("127.0.0.1", "::1")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -39,6 +43,7 @@ def create_app(
         graph = build_graph(build_classifier(settings), build_chat_models(settings), settings)
     log = log or DecisionLog(settings.decision_log_path)
     stats = Stats()
+    bus = DevLogBus()
 
     class ChatRequest(BaseModel):
         thread_id: str = Field(min_length=1)
@@ -55,9 +60,29 @@ def create_app(
     async def chat(req: ChatRequest) -> EventSourceResponse:
         return EventSourceResponse(
             stream_turn(
-                graph, req.thread_id, req.message, req.tier, settings=settings, on_record=record_turn
+                graph,
+                req.thread_id,
+                req.message,
+                req.tier,
+                settings=settings,
+                on_record=record_turn,
+                bus=bus,
             )
         )
+
+    @app.get("/api/devlog")
+    async def devlog_stream(request: Request) -> EventSourceResponse:
+        if not settings.devlog_enabled:
+            raise HTTPException(status_code=404)
+        host = request.client.host if request.client else None
+        if host not in _LOOPBACK_HOSTS:
+            raise HTTPException(status_code=403)
+
+        async def gen():
+            async for name, data in bus.stream():
+                yield {"event": name, "data": json.dumps(data)}
+
+        return EventSourceResponse(gen())
 
     @app.get("/api/stats")
     async def get_stats() -> dict[str, Any]:
