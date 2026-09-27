@@ -72,3 +72,33 @@ def latency_stats(latencies_ms: list[float]) -> dict[str, float | None]:
         return {"p50": None, "p95": None, "max": None}
     vals = sorted(latencies_ms)
     return {"p50": _percentile(vals, 0.5), "p95": _percentile(vals, 0.95), "max": vals[-1]}
+
+
+_EXPECTED_ROUTE = {"simple": "lite", "complex": "flash"}
+
+
+def _ratio(num: int, den: int) -> float | None:
+    return num / den if den else None
+
+
+def _routable(results: list[dict]) -> list[dict]:
+    """Gate-passing items that carry an expected tier."""
+    return [r for r in results if r.get("gate") == "passed" and r.get("expect_tier") in TIERS]
+
+
+def route_metrics(results: list[dict]) -> dict:
+    """Accuracy, confusion matrix and misroute rates over gate-passing, tier-labeled items."""
+    rows = _routable(results)
+    confusion = {t: {"lite": 0, "flash": 0} for t in ("simple", "complex")}
+    for r in rows:
+        confusion[r["expect_tier"]][r["route_tier"]] += 1
+    correct = sum(confusion[t][_EXPECTED_ROUTE[t]] for t in confusion)
+    lite = confusion["simple"]["lite"] + confusion["complex"]["lite"]
+    return {
+        "n": len(rows),
+        "confusion": confusion,
+        "accuracy": _ratio(correct, len(rows)),
+        "complex_to_lite_rate": _ratio(confusion["complex"]["lite"], sum(confusion["complex"].values())),
+        "simple_to_flash_rate": _ratio(confusion["simple"]["flash"], sum(confusion["simple"].values())),
+        "lite_share": _ratio(lite, len(rows)),
+    }

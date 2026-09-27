@@ -62,3 +62,33 @@ def test_latency_stats_interpolates_percentiles():
 def test_latency_stats_single_and_empty():
     assert ev.latency_stats([7.0]) == pytest.approx({"p50": 7.0, "p95": 7.0, "max": 7.0})
     assert ev.latency_stats([]) == {"p50": None, "p95": None, "max": None}
+
+
+def _r(id, expect_tier, route_tier, p_simple=0.5):
+    return {"id": id, "expect_gate": "pass", "expect_tier": expect_tier, "gate": "passed",
+            "route_tier": route_tier, "p_simple": p_simple}
+
+
+ROUTED = [_r("s1", "simple", "lite"), _r("s2", "simple", "lite"), _r("s3", "simple", "flash"),
+          _r("c1", "complex", "flash"), _r("c2", "complex", "lite")]
+
+
+def test_route_metrics_confusion_accuracy_and_rates():
+    m = ev.route_metrics(ROUTED)
+    assert m["confusion"] == {"simple": {"lite": 2, "flash": 1}, "complex": {"lite": 1, "flash": 1}}
+    assert m["accuracy"] == pytest.approx(3 / 5)
+    assert m["complex_to_lite_rate"] == pytest.approx(1 / 2)
+    assert m["simple_to_flash_rate"] == pytest.approx(1 / 3)
+    assert m["lite_share"] == pytest.approx(3 / 5)
+
+
+def test_route_metrics_ignore_blocked_and_untiered_items():
+    extra = [{"id": "u", "expect_gate": "unsafe", "gate": "blocked", "reason": "unsafe"},
+             {"id": "n", "expect_gate": "noise", "gate": "passed", "route_tier": "lite"}]
+    assert ev.route_metrics(ROUTED + extra) == ev.route_metrics(ROUTED)
+
+
+def test_route_metrics_empty_has_none_rates():
+    m = ev.route_metrics([])
+    assert m["accuracy"] is None and m["lite_share"] is None
+    assert m["complex_to_lite_rate"] is None and m["simple_to_flash_rate"] is None
