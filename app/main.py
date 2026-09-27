@@ -74,3 +74,6 @@ def create_app(
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
+
+
+app = _LazyASGIApp(create_app)
