@@ -3,14 +3,12 @@ description: |
   Archon Execution Framework: take an execution plan (default PLAN.md), split it
   into 3-5 independently testable tasks, then run each task in order:
   top-level integration tests first (proven red), micro-task red/green/refactor,
-  and top-level validation with one fix attempt. If validation fails a second
-  time, write a diagnostic report and halt: fix the code, then
+  and top-level validation with up to 3 fix attempts. If the tests are still red
+  after the third fix, write a diagnostic report and halt: fix the code, then
   `archon workflow resume`. Runs unattended: no approval gates.
   Use: archon workflow run tdd-execute --branch <name> "Execute PLAN.md" --detach
 model: large
 interactive: false
-worktree:
-  enabled: true
 inputs:
   plan:
     default: PLAN.md
@@ -90,17 +88,21 @@ nodes:
               log_path: {type: string}
             required: [passed, log_path]
 
-        # 3.5 First failure: route back to implementation
-        - id: fix
+        # 3.5 Validation failure: route back to implementation, up to 3 fix
+        # attempts. Each fix/validate pair is skipped once a validation passes.
+        - id: fix-1
           command: fix
           model: '@coder'
           depends_on: [validate-1]
           when: "$validate-1.output.passed == false"
+          with:
+            attempt: "1"
+            log_path: "$validate-1.output.log_path"
 
         - id: validate-2
           script: run-tests
           runtime: uv
-          depends_on: [fix]
+          depends_on: [fix-1]
           with:
             test_command: "$pick-task.output.test_command"
             task_id: "$pick-task.output.task_id"
@@ -113,20 +115,70 @@ nodes:
               log_path: {type: string}
             required: [passed, log_path]
 
-        # 3.5 Second failure: diagnostic report, then halt
-        - id: diagnose
-          command: diagnose
+        - id: fix-2
+          command: fix
+          model: '@coder'
           depends_on: [validate-2]
           when: "$validate-2.output.passed == false"
+          with:
+            attempt: "2"
+            log_path: "$validate-2.output.log_path"
+
+        - id: validate-3
+          script: run-tests
+          runtime: uv
+          depends_on: [fix-2]
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+            attempt: "3"
+            strict: "false"
+          output_format:
+            type: object
+            properties:
+              passed: {type: boolean}
+              log_path: {type: string}
+            required: [passed, log_path]
+
+        - id: fix-3
+          command: fix
+          model: '@coder'
+          depends_on: [validate-3]
+          when: "$validate-3.output.passed == false"
+          with:
+            attempt: "3"
+            log_path: "$validate-3.output.log_path"
+
+        - id: validate-4
+          script: run-tests
+          runtime: uv
+          depends_on: [fix-3]
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+            attempt: "4"
+            strict: "false"
+          output_format:
+            type: object
+            properties:
+              passed: {type: boolean}
+              log_path: {type: string}
+            required: [passed, log_path]
+
+        # Still red after 3 fixes: diagnostic report, then halt
+        - id: diagnose
+          command: diagnose
+          depends_on: [validate-4]
+          when: "$validate-4.output.passed == false"
           context: fresh
 
         # Halts the run while the tests are red. After a human fixes the code,
         # `archon workflow resume <run-id>` re-runs this and continues if green.
-        # Runs only if nothing upstream failed (the fix/diagnose branch may be skipped).
+        # Runs only if nothing upstream failed (fix/validate/diagnose nodes may be skipped).
         - id: halt-unless-green
           script: run-tests
           runtime: uv
-          depends_on: [validate-1, validate-2, diagnose]
+          depends_on: [validate-1, validate-2, validate-3, validate-4, diagnose]
           trigger_rule: none_failed_min_one_success
           with:
             test_command: "$pick-task.output.test_command"

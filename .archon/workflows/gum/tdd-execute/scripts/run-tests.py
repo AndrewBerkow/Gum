@@ -16,6 +16,6 @@ log.write_text(f"$ {cmd}\nexit {result.returncode}\n\n{result.stdout}\n{result.s
 passed = result.returncode == 0
 
 if strict and not passed:
-    sys.exit(f"HALT: integration tests still failing after two validation attempts. "
+    sys.exit(f"HALT: integration tests still failing after 3 fix attempts. "
              f"See diagnosis.md and {log}. Fix the code, then `archon workflow resume <run-id>`.")
 print(json.dumps({"passed": passed, "log_path": str(log)}))

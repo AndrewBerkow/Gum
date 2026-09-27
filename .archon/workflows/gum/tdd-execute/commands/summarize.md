@@ -11,7 +11,7 @@ Write `$ARTIFACTS_DIR/$pick-task.output.task_id/summary.md`, concise and in this
 
 1. **High-level task completed**: id, title, one-line outcome.
 2. **Test results**: the number of micro-unit tests passing, and the top-level integration
-   tests passing, with the commands used. Say which validation attempt passed (1st, 2nd, or after a human fix).
+   tests passing, with the commands used. Say which validation attempt passed (1-4, or after a human fix).
 3. **Changes/deliverables**: the files added or changed, each with one line on its purpose.
 4. **Concerns**: integration test concerns raised, shortcuts taken, anything the reviewer should check.
 5. **Next sub-workflow**: the next task's id, title, and goal from tasks.json, or "none, all tasks complete".

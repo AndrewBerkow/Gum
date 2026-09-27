@@ -1,4 +1,4 @@
-# First validation fails, fix-1 runs, validation 2 passes; fix-2/fix-3/diagnose are skipped.
+# Three failed validations, then the third fix makes validation 4 pass; diagnose is skipped.
 decompose: {task_count: 3}
 check-decomposition: "3 tasks OK"
 integration-tests: "stub: integration tests written and committed"
@@ -6,11 +6,15 @@ tests-red: "red as expected (exit 1)"
 implement: "stub: micro-tasks done"
 pick-task: {index: 1, task_id: t1, title: "Guardrail", test_command: "stub", total: 3}
 validate-1: {passed: false, log_path: "stub/validate-1.log"}
-fix-1: "stub: fixed"
-validate-2: {passed: true, log_path: "stub/validate-2.log"}
+fix-1: "stub: attempt 1"
+validate-2: {passed: false, log_path: "stub/validate-2.log"}
+fix-2: "stub: attempt 2"
+validate-3: {passed: false, log_path: "stub/validate-3.log"}
+fix-3: "stub: attempt 3"
+validate-4: {passed: true, log_path: "stub/validate-4.log"}
 halt-unless-green: '{"passed": true, "log_path": "stub/validate-final.log"}'
 summarize: "stub: summary written"
 record-progress: {all_done: false, next_title: "SSE server"}
 fixture:
   expect: completed
-  reached: [fix-1, validate-2, record-progress]
+  reached: [fix-3, validate-4, record-progress]
