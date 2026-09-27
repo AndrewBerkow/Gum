@@ -326,7 +326,16 @@ def make_jev_gate_node(classifier: Any, settings: Settings):
                 latency_ms=latency_ms,
                 jev_model=settings.jev_model,
             )
-        devlog.emit("jev.decision", outcome=decision["status"])
+        devlog.emit(
+            "jev.decision",
+            **explain_decision(
+                response,
+                decision,
+                route,
+                block_threshold=settings.block_threshold,
+                route_lite_threshold=settings.route_lite_threshold,
+            ),
+        )
         out: dict[str, Any] = {
             "guardrail_passed": decision["status"] == "passed",
             "jev_decision": decision,

@@ -31,6 +31,25 @@ async def test_jev_gate_emits_jev_decision_with_outcome_matching_status():
     assert decision["outcome"] == "blocked"
 
 
+async def test_jev_gate_emits_full_decision_explanation():
+    history = await _run_gate(ScriptClassifier(), "hello")
+    decision = next(d for n, d in history if n == "jev.decision")
+    assert decision["outcome"] == "passed"
+    assert decision["unsafe"]["verdict"] == "safe"
+    assert decision["scope"]["choice"] == "valid_request"
+    assert decision["complexity"]["tier"] == "lite"
+    assert decision["distribution_concentration"] is not None
+    assert decision["route"]["source"] == "jev"
+    assert isinstance(decision["explanation"], str) and decision["explanation"]
+
+    history = await _run_gate(ScriptClassifier(), "INJECT this")
+    decision = next(d for n, d in history if n == "jev.decision")
+    assert decision["outcome"] == "blocked"
+    assert decision["reason"] == "unsafe"
+    assert decision["unsafe"]["verdict"] == "blocked"
+    assert decision["route"] is None
+
+
 async def test_jev_gate_emits_jev_error_on_classifier_failure():
     history = await _run_gate(ScriptClassifier(exc=RuntimeError("boom")), "hello")
     names = [n for n, _ in history]
