@@ -40,3 +40,45 @@ def test_main_judge_without_google_key_returns_1_naming_google_key_before_buildi
     assert "GOOGLE_API_KEY" in out.err
     assert calls == [], "the judge gate must fail before any classifier is built"
     assert not list(tmp_path.glob("*.md"))
+
+
+def test_main_backend_live_reads_typesafe_key_from_gum_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "typesafe.env"
+    env_file.write_text("TYPESAFE_API_KEY=ts_live_test1234567890abcdef\n")
+    monkeypatch.setenv("GUM_ENV_FILE", str(env_file))
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+    calls = []
+    monkeypatch.setattr(
+        "app.providers.build_classifier", lambda settings: calls.append(settings) or object()
+    )
+
+    code = ev.main(["--backend", "live", "--out", str(tmp_path / "out")])
+
+    assert code == 0
+    assert len(calls) == 1
+    key = calls[0].typesafe_api_key
+    assert key is not None and key.get_secret_value() == "ts_live_test1234567890abcdef", (
+        "run_eval --backend live must read TYPESAFE_API_KEY from the file GUM_ENV_FILE points at, "
+        "instead of forcing _env_file=None"
+    )
+
+
+def test_main_backend_stub_still_ignores_gum_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "typesafe.env"
+    env_file.write_text("TYPESAFE_API_KEY=ts_live_test1234567890abcdef\n")
+    monkeypatch.setenv("GUM_ENV_FILE", str(env_file))
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+
+    calls = []
+    monkeypatch.setattr(
+        "app.providers.build_classifier", lambda settings: calls.append(settings) or object()
+    )
+
+    code = ev.main(["--backend", "stub", "--out", str(tmp_path / "out")])
+
+    assert code == 0
+    assert len(calls) == 1
+    assert calls[0].typesafe_api_key is None, (
+        "run_eval --backend stub must keep ignoring GUM_ENV_FILE / .env (_env_file=None)"
+    )

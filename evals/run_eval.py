@@ -371,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.backend == "live":
         chat_provider = "google_genai" if args.judge else "fake"
-        settings = Settings(_env_file=None, jev_backend="live", chat_provider=chat_provider)
+        settings = Settings(jev_backend="live", chat_provider=chat_provider)
         if args.judge and not has_real_key(settings.google_api_key):
             print("GOOGLE_API_KEY is missing or a placeholder; the lite-adequacy judge needs a real key", file=sys.stderr)
             return 1
