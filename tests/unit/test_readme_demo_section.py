@@ -43,3 +43,10 @@ def test_readme_demo_section_has_offline_run_command():
         "the demo section must document the offline (JEV_BACKEND=stub CHAT_PROVIDER=fake) run "
         "command for demoing without real keys"
     )
+
+
+def test_readme_demo_section_lists_six_prompts():
+    section = _demo_section().lower()
+    expected = ["simple", "complex", "injection", "noise", "/model flash", "/stats"]
+    missing = [kw for kw in expected if kw not in section]
+    assert not missing, f"demo section is missing these demo-script prompts/commands: {missing}"
