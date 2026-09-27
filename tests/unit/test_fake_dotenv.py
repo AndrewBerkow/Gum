@@ -26,3 +26,24 @@ def test_fake_dotenv_raises_file_exists_error_and_does_not_overwrite(tmp_path):
             pass
 
     assert target.read_text() == original
+
+
+def test_fake_dotenv_removes_created_file_on_exit(tmp_path):
+    target = tmp_path / ".env"
+
+    with fake_dotenv(target) as created_path:
+        assert created_path == target
+        assert target.exists()
+
+    assert not target.exists()
+
+
+def test_fake_dotenv_removes_created_file_even_on_exception(tmp_path):
+    target = tmp_path / ".env"
+
+    with pytest.raises(RuntimeError):
+        with fake_dotenv(target):
+            assert target.exists()
+            raise RuntimeError("boom")
+
+    assert not target.exists()
