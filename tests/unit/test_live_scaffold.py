@@ -7,9 +7,11 @@ tests/integration/test_fix3_live_scaffold.py for the top-level check that runnin
 """
 
 import json
+import os
 
 import pytest
 
+from tests.live import conftest as live_conftest
 from tests.live import test_live as live
 
 JEV_GATED = [
@@ -40,6 +42,27 @@ async def test_gemini_gated_tests_skip_citing_google_api_key(fn, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(pytest.skip.Exception, match="GOOGLE_API_KEY"):
         await fn()
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["unset", "empty_string"])
+def test_live_conftest_defaults_gum_env_file_to_repo_root_dotenv_when_unset_or_empty(value, monkeypatch):
+    if value is None:
+        monkeypatch.delenv("GUM_ENV_FILE", raising=False)
+    else:
+        monkeypatch.setenv("GUM_ENV_FILE", value)
+
+    live_conftest._apply_default_gum_env_file(monkeypatch)
+
+    assert os.environ.get("GUM_ENV_FILE") == str(live_conftest.REPO_ROOT_DOTENV)
+
+
+def test_live_conftest_leaves_an_explicit_gum_env_file_value_untouched(tmp_path, monkeypatch):
+    explicit = tmp_path / "custom.env"
+    monkeypatch.setenv("GUM_ENV_FILE", str(explicit))
+
+    live_conftest._apply_default_gum_env_file(monkeypatch)
+
+    assert os.environ.get("GUM_ENV_FILE") == str(explicit)
 
 
 def test_record_fixture_scrubs_request_id_and_writes_json(tmp_path):
