@@ -1,0 +1,5 @@
+# Project Archon config. Layers over ~/.archon/config.yaml.
+aliases:
+  # Code-writing nodes in tdd-execute (integration-tests, implement, fix).
+  # Sonnet 5 is the cheapest Sonnet ($2/$10 per MTok vs $3/$15 for Sonnet 4.6).
+  '@coder': { provider: claude, model: claude-sonnet-5 }

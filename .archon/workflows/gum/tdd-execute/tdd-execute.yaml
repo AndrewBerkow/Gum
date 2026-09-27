@@ -62,6 +62,7 @@ nodes:
         # 3.1 Top-level integration tests, no functional code
         - id: integration-tests
           command: integration-tests
+          model: '@coder'
           depends_on: [pick-task]
           context: fresh
 
@@ -76,6 +77,7 @@ nodes:
         # 3.2 + 3.3 Micro-task breakdown and micro-TDD loop
         - id: implement
           command: implement
+          model: '@coder'
           depends_on: [tests-red]
 
         # 3.4 Top-level validation, attempt 1
@@ -98,6 +100,7 @@ nodes:
         # 3.5 First failure: route back to implementation
         - id: fix
           command: fix
+          model: '@coder'
           depends_on: [validate-1]
           when: "$validate-1.output.passed == false"
 
