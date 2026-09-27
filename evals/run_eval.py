@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import datetime as dt
 import json
+import random
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -212,6 +213,53 @@ async def run_all(items: list[dict], classifier, settings: Settings, concurrency
     return list(await asyncio.gather(*(one(i) for i in items)))
 
 
+def lite_first(rng: random.Random) -> bool:
+    """Coin flip deciding whether the lite answer is shown first to the blind judge."""
+    return rng.random() < 0.5
+
+
+def render_judge_prompt(question: str, answer_a: str, answer_b: str) -> str:
+    """A blind pairwise prompt: the judge sees only 'A'/'B', never which is lite or flash."""
+    return (
+        "You are grading two candidate answers to the same question. Answer only 'yes' or 'no': "
+        "is Answer A as good as Answer B?\n\n"
+        f"Question: {question}\n\nAnswer A: {answer_a}\n\nAnswer B: {answer_b}"
+    )
+
+
+def parse_judge_verdict(text: str) -> bool:
+    """'yes...' -> True; anything else (including ambiguous text) -> False (fail closed)."""
+    return text.strip().lower().startswith("yes")
+
+
+async def run_judge(items: dict[str, dict], results: list[dict], chat_models: dict, rng=None) -> dict:
+    """Blind pairwise lite-vs-flash judge (PLAN T11): for each lite-routed item, generate both
+    answers, ask flash (blind, order randomized) whether lite is as good as flash, and report the
+    lite-adequacy rate plus the ids that failed.
+    """
+    rng = rng or random.Random()
+    lite_ids = [r["id"] for r in results if r.get("route_tier") == "lite"]
+    adequate = 0
+    failures: list[str] = []
+    for item_id in lite_ids:
+        item = items[item_id]
+        messages = [*_history(item.get("context") or []), HumanMessage(item["text"])]
+        lite_answer = (await chat_models["lite"].ainvoke(messages)).content
+        flash_answer = (await chat_models["flash"].ainvoke(messages)).content
+        a, b = (lite_answer, flash_answer) if lite_first(rng) else (flash_answer, lite_answer)
+        prompt = render_judge_prompt(item["text"], a, b)
+        verdict_text = (await chat_models["flash"].ainvoke([HumanMessage(prompt)])).content
+        if parse_judge_verdict(verdict_text):
+            adequate += 1
+        else:
+            failures.append(item_id)
+    return {
+        "n": len(lite_ids),
+        "lite_adequacy_rate": _ratio(adequate, len(lite_ids)),
+        "failures": failures,
+    }
+
+
 def _pct(v: float | None) -> str:
     return "n/a" if v is None else f"{v * 100:.1f}%"
 
@@ -220,7 +268,7 @@ def _ms(v: float | None) -> str:
     return "n/a" if v is None else f"{v:.1f} ms"
 
 
-def render_report(results: list[dict], sweep: dict, *, date, backend: str) -> str:
+def render_report(results: list[dict], sweep: dict, *, date, backend: str, judge: dict | None = None) -> str:
     """Markdown report: gate metrics, route metrics, threshold sweep, latency."""
     gate, route = gate_metrics(results), route_metrics(results)
     lat = latency_stats([r["latency_ms"] for r in results if "latency_ms" in r])
@@ -274,6 +322,15 @@ def render_report(results: list[dict], sweep: dict, *, date, backend: str) -> st
         f"- max: {_ms(lat['max'])}",
         "",
     ]
+    if judge is not None:
+        lines += [
+            "## Lite-adequacy judge",
+            "",
+            f"- Items judged: {judge['n']}",
+            f"- Lite-adequacy rate: {_pct(judge['lite_adequacy_rate'])}",
+            f"- Failures: {', '.join(judge['failures']) if judge['failures'] else 'none'}",
+            "",
+        ]
     return "\n".join(lines)
 
 
@@ -313,7 +370,8 @@ def main(argv: list[str] | None = None) -> int:
     from app.providers import build_classifier
 
     if args.backend == "live":
-        settings = Settings(_env_file=None, jev_backend="live", chat_provider="fake")
+        chat_provider = "google_genai" if args.judge else "fake"
+        settings = Settings(_env_file=None, jev_backend="live", chat_provider=chat_provider)
         if args.judge and not has_real_key(settings.google_api_key):
             print("GOOGLE_API_KEY is missing or a placeholder; the lite-adequacy judge needs a real key", file=sys.stderr)
             return 1
@@ -330,7 +388,15 @@ def main(argv: list[str] | None = None) -> int:
     results = asyncio.run(run_all(items, classifier, settings, args.concurrency))
     today = dt.date.today()
     sweep = sweep_thresholds(results, thresholds, target=args.target)
-    report = render_report(results, sweep, date=today, backend=args.backend)
+
+    judge_result = None
+    if args.judge:
+        from app.providers import build_chat_models
+
+        chat_models = build_chat_models(settings)
+        judge_result = asyncio.run(run_judge({it["id"]: it for it in items}, results, chat_models))
+
+    report = render_report(results, sweep, date=today, backend=args.backend, judge=judge_result)
     md, raw = write_outputs(args.out, report, results, today)
     print(f"wrote {md}\nwrote {raw}")
     return 0

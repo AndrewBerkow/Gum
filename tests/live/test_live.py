@@ -36,42 +36,60 @@ def record_fixture(name: str, response: dict, directory: Path = FIXTURES_DIR) ->
     return path
 
 
-def _live_classifier(settings: Settings):
-    if not has_real_key(settings.typesafe_api_key):
-        pytest.skip(reason="TYPESAFE_API_KEY is missing or a placeholder")
-    return build_classifier(settings)
+def _typesafe_key_reason() -> str | None:
+    """None when TYPESAFE_API_KEY is real; otherwise the skip reason naming it."""
+    if has_real_key(Settings().typesafe_api_key):
+        return None
+    return "TYPESAFE_API_KEY is missing or a placeholder"
+
+
+def _google_key_reason() -> str | None:
+    """None when GOOGLE_API_KEY is real; otherwise the skip reason naming it."""
+    if has_real_key(Settings().google_api_key):
+        return None
+    return "GOOGLE_API_KEY is missing or a placeholder"
 
 
 # ------------------------------------------------------------------ Jev (needs TYPESAFE_API_KEY)
+# Each test's own `pytest.skip(...)` call site (not a shared helper) so `pytest -rs` reports one
+# summary line per test instead of collapsing them into a single grouped line.
 
 
 async def test_jev_real_response_validates_wire_format():
+    if reason := _typesafe_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings(jev_backend="live")
-    classifier = _live_classifier(settings)
+    classifier = build_classifier(settings)
     response = await classifier.ainvoke(build_request([HumanMessage("hi there")], settings.guardrail_context_turns))
     assert isinstance(response, ClassifierResponse)
     assert set(response.answers) == {"unsafe", "scope", "complexity"}
 
 
 async def test_jev_benign_prompt_passes_gate():
+    if reason := _typesafe_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings(jev_backend="live")
-    classifier = _live_classifier(settings)
+    classifier = build_classifier(settings)
     response = await classifier.ainvoke(build_request([HumanMessage("hi there, how is it going")], settings.guardrail_context_turns))
     assert response.answers["unsafe"].noul < settings.block_threshold
     record_fixture("benign_pass", response.model_dump(mode="json"))
 
 
 async def test_jev_injection_prompt_is_blocked():
+    if reason := _typesafe_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings(jev_backend="live")
-    classifier = _live_classifier(settings)
+    classifier = build_classifier(settings)
     response = await classifier.ainvoke(build_request([HumanMessage(INJECTION)], settings.guardrail_context_turns))
     assert response.answers["unsafe"].noul > settings.block_threshold
     record_fixture("injection_blocked", response.model_dump(mode="json"))
 
 
 async def test_jev_simple_prompt_routes_to_lite():
+    if reason := _typesafe_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings(jev_backend="live")
-    classifier = _live_classifier(settings)
+    classifier = build_classifier(settings)
     response = await classifier.ainvoke(build_request([HumanMessage("hi there")], settings.guardrail_context_turns))
     complexity = response.answers["complexity"]
     assert complexity.probabilities["simple"] >= settings.route_lite_threshold
@@ -81,14 +99,10 @@ async def test_jev_simple_prompt_routes_to_lite():
 # --------------------------------------------------------------- Gemini (needs GOOGLE_API_KEY)
 
 
-def _require_google_key(settings: Settings) -> None:
-    if not has_real_key(settings.google_api_key):
-        pytest.skip(reason="GOOGLE_API_KEY is missing or a placeholder")
-
-
 async def test_gemini_models_list_contains_both_configured_ids():
+    if reason := _google_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings()
-    _require_google_key(settings)
     client = genai.Client(api_key=settings.google_api_key.get_secret_value())
     names = {m.name for m in client.models.list()}
     for model_id in (settings.chat_model_flash, settings.chat_model_lite):
@@ -97,8 +111,9 @@ async def test_gemini_models_list_contains_both_configured_ids():
 
 @pytest.mark.parametrize("tier", ["flash", "lite"])
 async def test_gemini_tier_streams_at_least_two_tokens_with_usage_metadata(tier):
+    if reason := _google_key_reason():
+        pytest.skip(reason=reason)
     settings = Settings()
-    _require_google_key(settings)
     models = build_chat_models(settings)
     chunks = [c async for c in models[tier].astream([HumanMessage("say a short sentence about the ocean")])]
     assert len(chunks) >= 2
@@ -106,8 +121,8 @@ async def test_gemini_tier_streams_at_least_two_tokens_with_usage_metadata(tier)
 
 
 async def test_gemini_invalid_key_yields_error_then_done():
-    settings = Settings()
-    _require_google_key(settings)
+    if reason := _google_key_reason():
+        pytest.skip(reason=reason)
     live_settings = Settings(
         jev_backend="stub", chat_provider="google_genai", google_api_key="AIzaInvalidTestKeyDoesNotExist000"
     )
