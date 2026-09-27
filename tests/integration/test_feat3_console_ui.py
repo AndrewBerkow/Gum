@@ -81,7 +81,7 @@ def bar(card, question):
 
 def wait_for_cards(page, n):
     page.wait_for_function(
-        "(n) => document.querySelectorAll('[data-testid=\"devlog-card\"]').length >= n", n
+        "(n) => document.querySelectorAll('[data-testid=\"devlog-card\"]').length >= n", arg=n
     )
 
 
