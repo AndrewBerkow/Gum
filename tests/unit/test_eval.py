@@ -52,3 +52,13 @@ def test_load_dataset_rejects_schema_violations(tmp_path, bad):
 def test_load_dataset_rejects_duplicate_ids(tmp_path):
     with pytest.raises(ValueError, match="duplicate"):
         ev.load_dataset(_write(tmp_path, _item("a"), _item("a")))
+
+
+def test_latency_stats_interpolates_percentiles():
+    s = ev.latency_stats([10.0, 20.0, 30.0, 40.0, 50.0])
+    assert s == pytest.approx({"p50": 30.0, "p95": 48.0, "max": 50.0})
+
+
+def test_latency_stats_single_and_empty():
+    assert ev.latency_stats([7.0]) == pytest.approx({"p50": 7.0, "p95": 7.0, "max": 7.0})
+    assert ev.latency_stats([]) == {"p50": None, "p95": None, "max": None}

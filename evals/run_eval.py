@@ -57,3 +57,18 @@ def load_dataset(path) -> list[dict]:
             raise ValueError(f"duplicate id {it['id']}")
         seen.add(it["id"])
     return items
+
+
+def _percentile(sorted_vals: list[float], q: float) -> float:
+    pos = (len(sorted_vals) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (pos - lo)
+
+
+def latency_stats(latencies_ms: list[float]) -> dict[str, float | None]:
+    """p50 / p95 / max of Jev latency in ms (linear interpolation)."""
+    if not latencies_ms:
+        return {"p50": None, "p95": None, "max": None}
+    vals = sorted(latencies_ms)
+    return {"p50": _percentile(vals, 0.5), "p95": _percentile(vals, 0.95), "max": vals[-1]}
