@@ -14,6 +14,11 @@ If the plan already has its own finer task list, group those items into 3-5
 tasks. Keep the plan's own IDs in each task's `plan_refs`, and carry over the
 tests and acceptance criteria the plan lists.
 
+This run is unattended. If a plan item needs real API keys or external accounts,
+check whether those environment variables are set (e.g. `test -n "$TYPESAFE_API_KEY"`).
+If any are missing, leave that item out of `tasks.json`, and list it in `tasks.md` under
+"Deferred" with the missing variables. Its tests could only skip or fail.
+
 For `integration_test_command`, use the toolchain the plan specifies. Point the
 command only at that task's integration test path, e.g.
 `uv run pytest tests/integration/test_t1_guardrail.py -q`. Every task needs its
