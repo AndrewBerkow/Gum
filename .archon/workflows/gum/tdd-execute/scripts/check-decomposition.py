@@ -1,4 +1,4 @@
-"""Deterministic gate: tasks.json must hold 3-5 well-formed tasks."""
+"""Deterministic gate: tasks.json must hold 1-5 well-formed tasks."""
 import json
 import os
 import sys
@@ -12,8 +12,8 @@ if not path.is_file():
 
 tasks = json.loads(path.read_text())["tasks"]
 errors = []
-if not 3 <= len(tasks) <= 5:
-    errors.append(f"expected 3-5 tasks, got {len(tasks)}")
+if not 1 <= len(tasks) <= 5:
+    errors.append(f"expected 1-5 tasks, got {len(tasks)}")
 ids = [t.get("id") for t in tasks]
 if len(set(ids)) != len(ids):
     errors.append(f"duplicate task ids: {ids}")

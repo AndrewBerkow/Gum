@@ -1,7 +1,7 @@
 name: tdd-execute
 description: |
   Archon Execution Framework: take an execution plan (default PLAN.md), split it
-  into 3-5 independently testable tasks, then run each task in order:
+  into 1-5 independently testable tasks, then run each task in order:
   top-level integration tests first (proven red), micro-task red/green/refactor,
   and top-level validation with up to 3 fix attempts. If the tests are still red
   after the third fix, write a diagnostic report and halt: fix the code, then

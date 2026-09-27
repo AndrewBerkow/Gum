@@ -2,7 +2,9 @@
 
 Plan file: `$INPUTS.plan` (relative to the repo root). Invocation message: $ARGUMENTS
 
-Read the whole plan. Split it into **3 to 5 high-level tasks** that run in order.
+Read the whole plan. Split it into **as few high-level tasks as it needs, at most 5**, in order.
+A small fix plan with one change is one task. Don't pad: each task costs a full test-first cycle.
+A large feature plan usually needs 3 to 5.
 Each task must be:
 
 - **Independently executable**: it builds only on earlier tasks, never later ones.
@@ -10,7 +12,7 @@ Each task must be:
 - **Verifiably testable**: a single shell command runs its top-level integration
   tests and exits 0 only when the task's acceptance criteria are met.
 
-If the plan already has its own finer task list, group those items into 3-5
+If the plan already has its own finer task list, group those items into at most 5
 tasks. Keep the plan's own IDs in each task's `plan_refs`, and carry over the
 tests and acceptance criteria the plan lists.
 
