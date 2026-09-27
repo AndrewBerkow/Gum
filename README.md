@@ -122,6 +122,13 @@ land in the console for each turn:
    The card shows both Jev's recommended tier and the tier actually used.
 6. **`/stats`** — type `/stats` to print the running gate/route counters for the session.
 
+Each card in the console shows:
+
+- an **outcome badge** — green `PASS→lite`/`PASS→flash`, red `BLOCKED(reason)`, or amber `ERROR`.
+- **probability bars**, one per Jev question, filled to that question's probability `p`, with a
+  vertical **threshold** marker showing the cutoff `p` is compared against.
+- a **timing** strip — Jev latency, time to first token, and total turn time, plus the model id.
+
 ## Reading the eval report
 
 `uv run python evals/run_eval.py --backend stub` (or `--backend live`, once keys exist) writes a

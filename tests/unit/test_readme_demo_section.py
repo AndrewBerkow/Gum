@@ -50,3 +50,10 @@ def test_readme_demo_section_lists_six_prompts():
     expected = ["simple", "complex", "injection", "noise", "/model flash", "/stats"]
     missing = [kw for kw in expected if kw not in section]
     assert not missing, f"demo section is missing these demo-script prompts/commands: {missing}"
+
+
+def test_readme_demo_section_explains_console_elements():
+    section = _demo_section().lower()
+    expected = ["badge", "probability", "threshold", "timing"]
+    missing = [kw for kw in expected if kw not in section]
+    assert not missing, f"demo section doesn't explain these console elements: {missing}"
