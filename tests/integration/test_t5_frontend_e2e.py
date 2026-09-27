@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings
 from app.main import STATIC_DIR, create_app
+from tests.nested_suite import is_nested_suite
 
 ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "static" / "index.html"
@@ -371,6 +372,8 @@ def test_playwright_e2e_suite_exists_covering_plan_t12():
 
 
 def test_full_not_live_suite_green_with_no_env_file():
+    if is_nested_suite():
+        pytest.skip("already running inside a nested full-suite invocation")
     assert (ROOT / "tests" / "e2e" / "test_browser.py").exists(), "T12 e2e suite missing"
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-m", "not live", "-q",
