@@ -140,3 +140,103 @@ def test_near_bottom_detects_user_scrolled_up(page):
         " Gum.nearBottom({scrollHeight: 1000, clientHeight: 300, scrollTop: 300})]"
     )
     assert out == [True, False]
+
+
+# 8. devlog console: turn-event reducer
+def test_merge_devlog_event_folds_full_turn_sequence_into_accumulator(page):
+    turn = page.evaluate(
+        """() => {
+            let t = {};
+            const fold = (name, data) => { t = Gum.mergeDevlogEvent(t, name, data); };
+            fold("turn.start", {turn_id: "abc", message: "hi there"});
+            fold("jev.request", {turn_id: "abc", body: {questions: {}}});
+            fold("jev.response", {turn_id: "abc", body: {ok: true}});
+            fold("jev.decision", {turn_id: "abc", t_ms: 12.4, outcome: "passed",
+                                  explanation: "p_unsafe 0.05 ≤ 0.70 → lite"});
+            fold("llm.start", {turn_id: "abc", tier: "lite", model: "gemini-3.5-flash-lite"});
+            fold("llm.first_token", {turn_id: "abc", ttft_ms: 45.2});
+            fold("llm.done", {turn_id: "abc", token_count: 7});
+            fold("turn.end", {turn_id: "abc", outcome: "answered", total_ms: 210.9});
+            return t;
+        }"""
+    )
+    assert turn["message"] == "hi there"
+    assert turn["request"]["body"] == {"questions": {}}
+    assert turn["response"]["body"] == {"ok": True}
+    assert turn["decision"]["explanation"] == "p_unsafe 0.05 ≤ 0.70 → lite"
+    assert turn["jevMs"] == 12.4
+    assert turn["llmStart"] == {"turn_id": "abc", "tier": "lite", "model": "gemini-3.5-flash-lite"}
+    assert turn["ttftMs"] == 45.2
+    assert turn["llmDone"]["token_count"] == 7
+    assert turn["outcome"] == "answered"
+    assert turn["totalMs"] == 210.9
+
+
+def test_merge_devlog_event_folds_jev_error(page):
+    turn = page.evaluate(
+        """() => {
+            let t = Gum.mergeDevlogEvent({}, "turn.start", {turn_id: "z"});
+            t = Gum.mergeDevlogEvent(t, "jev.error", {error_type: "TimeoutError", message: "boom"});
+            return t;
+        }"""
+    )
+    assert turn["error"] == {"error_type": "TimeoutError", "message": "boom"}
+
+
+# 9. devlog console: badge / timing / bar-position / scope-bars / persistence helpers
+def test_devlog_badge_passed_blocked_and_error(page):
+    out = page.evaluate(
+        """() => [
+            Gum.devlogBadge({outcome: "answered", decision: {route: {tier: "lite"}}}),
+            Gum.devlogBadge({outcome: "blocked", decision: {reason: "unsafe"}}),
+            Gum.devlogBadge({outcome: "error"}),
+        ]"""
+    )
+    assert out[0] == {"text": "PASS → lite", "cls": "green"}
+    assert out[1] == {"text": "BLOCKED (unsafe)", "cls": "red"}
+    assert out[2] == {"text": "ERROR", "cls": "amber"}
+
+
+def test_devlog_timing_text_omits_ttft_and_model_when_no_llm_start(page):
+    out = page.evaluate(
+        """() => [
+            Gum.devlogTimingText({jevMs: 12.4, ttftMs: 45.2, totalMs: 210.9,
+                                   llmStart: {model: "gemini-3.5-flash-lite"}}),
+            Gum.devlogTimingText({jevMs: 8.1, totalMs: 9.3}),
+        ]"""
+    )
+    assert out[0] == "jev 12ms · ttft 45ms · total 211ms · gemini-3.5-flash-lite"
+    assert "ttft" not in out[1] and "gemini" not in out[1]
+    assert out[1] == "jev 8ms · total 9ms"
+
+
+def test_devlog_bar_pct_clamps_to_unit_interval(page):
+    out = page.evaluate("() => [Gum.devlogBarPct(0.7), Gum.devlogBarPct(-1), Gum.devlogBarPct(5)]")
+    assert out == [0.7, 0, 1]
+
+
+def test_scope_bars_lists_one_entry_per_probability_label(page):
+    out = page.evaluate(
+        """() => Gum.scopeBars({choice: "valid_request",
+            probabilities: {valid_request: 0.92, noise: 0.04, out_of_scope: 0.04}})"""
+    )
+    assert {(b["label"], b["p"]) for b in out} == {
+        ("valid_request", 0.92), ("noise", 0.04), ("out_of_scope", 0.04)
+    }
+
+
+def test_devlog_visibility_persists_through_local_storage_and_survives_a_throwing_backend(page):
+    out = page.evaluate(
+        """() => {
+            localStorage.removeItem("devlog_visible");
+            const before = Gum.loadDevlogVisible();
+            Gum.saveDevlogVisible(false);
+            const after = Gum.loadDevlogVisible();
+            const fakeStorage = { getItem() { throw new Error("blocked"); },
+                                   setItem() { throw new Error("blocked"); } };
+            const safeLoad = Gum.loadDevlogVisible(fakeStorage);
+            Gum.saveDevlogVisible(true, fakeStorage);
+            return [before, after, safeLoad];
+        }"""
+    )
+    assert out == [True, False, True]

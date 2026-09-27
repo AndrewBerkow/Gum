@@ -123,7 +123,74 @@ function formatStats(stats) {
 
 const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 24;
 
-window.Gum = { createSSEParser, formatGuardrail, formatRoute, formatFooter, parseCommand, createHistory, formatStats, nearBottom };
+// ---- devlog console: pure helpers ----
+
+const DEVLOG_EVENT_FIELDS = {
+  "turn.start": (t, d) => ({ ...t, message: d.message }),
+  "jev.request": (t, d) => ({ ...t, request: d }),
+  "jev.response": (t, d) => ({ ...t, response: d }),
+  "jev.decision": (t, d) => ({ ...t, decision: d, jevMs: d.t_ms }),
+  "jev.error": (t, d) => ({ ...t, error: d }),
+  "llm.start": (t, d) => ({ ...t, llmStart: d }),
+  "llm.first_token": (t, d) => ({ ...t, ttftMs: d.ttft_ms }),
+  "llm.done": (t, d) => ({ ...t, llmDone: d }),
+  "turn.end": (t, d) => ({ ...t, outcome: d.outcome, totalMs: d.total_ms }),
+};
+
+function mergeDevlogEvent(turn, name, data) {
+  const fold = DEVLOG_EVENT_FIELDS[name];
+  return fold ? fold(turn, data) : turn;
+}
+
+function devlogBadge(turn) {
+  if (turn.outcome === "answered") {
+    const tier = (turn.decision && turn.decision.route && turn.decision.route.tier)
+      || (turn.decision && turn.decision.complexity && turn.decision.complexity.tier)
+      || "?";
+    return { text: `PASS → ${tier}`, cls: "green" };
+  }
+  if (turn.outcome === "blocked") {
+    const reason = (turn.decision && turn.decision.reason) || "?";
+    return { text: `BLOCKED (${reason})`, cls: "red" };
+  }
+  return { text: "ERROR", cls: "amber" };
+}
+
+function devlogTimingText(turn) {
+  const parts = [];
+  if (turn.jevMs != null) parts.push(`jev ${Math.round(turn.jevMs)}ms`);
+  if (turn.llmStart && turn.ttftMs != null) parts.push(`ttft ${Math.round(turn.ttftMs)}ms`);
+  if (turn.totalMs != null) parts.push(`total ${Math.round(turn.totalMs)}ms`);
+  if (turn.llmStart && turn.llmStart.model) parts.push(turn.llmStart.model);
+  return parts.join(" · ");
+}
+
+const devlogBarPct = (p) => Math.max(0, Math.min(1, p));
+
+const scopeBars = (scope) => Object.entries(scope.probabilities).map(([label, p]) => ({ label, p }));
+
+function loadDevlogVisible(storage) {
+  const s = storage || window.localStorage;
+  try {
+    const v = s.getItem("devlog_visible");
+    return v === null ? true : v === "true";
+  } catch (e) {
+    return true;
+  }
+}
+
+function saveDevlogVisible(visible, storage) {
+  const s = storage || window.localStorage;
+  try {
+    s.setItem("devlog_visible", String(visible));
+  } catch (e) { /* private browsing / disabled storage: ignore */ }
+}
+
+window.Gum = {
+  createSSEParser, formatGuardrail, formatRoute, formatFooter, parseCommand, createHistory,
+  formatStats, nearBottom, mergeDevlogEvent, devlogBadge, devlogTimingText, devlogBarPct,
+  scopeBars, loadDevlogVisible, saveDevlogVisible,
+};
 
 // ---- app wiring ----
 const logEl = document.getElementById("log");
