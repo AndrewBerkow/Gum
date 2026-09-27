@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 
-from app.config import Settings  # noqa: E402
+from app.config import ConfigError, Settings, has_real_key  # noqa: E402
 from app.jev import build_request, evaluate  # noqa: E402
 from app.state import Tier  # noqa: E402
 
@@ -309,14 +309,25 @@ def main(argv: list[str] | None = None) -> int:
         thresholds = parse_sweep(args.threshold_sweep)
     except ValueError as exc:
         parser.error(str(exc))
-    if args.backend == "live":
-        parser.error("--backend live runs in T13 and is not available yet")
 
     from app.providers import build_classifier
 
-    settings = Settings(_env_file=None, jev_backend="stub", chat_provider="fake")
+    if args.backend == "live":
+        settings = Settings(_env_file=None, jev_backend="live", chat_provider="fake")
+        if args.judge and not has_real_key(settings.google_api_key):
+            print("GOOGLE_API_KEY is missing or a placeholder; the lite-adequacy judge needs a real key", file=sys.stderr)
+            return 1
+        try:
+            classifier = build_classifier(settings)
+        except ConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    else:
+        settings = Settings(_env_file=None, jev_backend="stub", chat_provider="fake")
+        classifier = build_classifier(settings)
+
     items = load_dataset(args.dataset)
-    results = asyncio.run(run_all(items, build_classifier(settings), settings, args.concurrency))
+    results = asyncio.run(run_all(items, classifier, settings, args.concurrency))
     today = dt.date.today()
     sweep = sweep_thresholds(results, thresholds, target=args.target)
     report = render_report(results, sweep, date=today, backend=args.backend)
