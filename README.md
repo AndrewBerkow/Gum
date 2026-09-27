@@ -102,6 +102,12 @@ Run the app with a real `.env` in place (see "Live mode" above):
 uv run uvicorn app.main:app --port 8000
 ```
 
+Or run it entirely offline, no keys needed:
+
+```
+JEV_BACKEND=stub CHAT_PROVIDER=fake uv run uvicorn app.main:app --port 8000
+```
+
 ## Reading the eval report
 
 `uv run python evals/run_eval.py --backend stub` (or `--backend live`, once keys exist) writes a

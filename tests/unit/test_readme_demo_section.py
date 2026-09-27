@@ -35,3 +35,11 @@ def test_readme_demo_section_has_live_run_command():
     assert "uv run uvicorn app.main:app --port 8000" in section, (
         "the demo section must document the live run command on port 8000"
     )
+
+
+def test_readme_demo_section_has_offline_run_command():
+    section = _demo_section()
+    assert "JEV_BACKEND=stub" in section and "CHAT_PROVIDER=fake" in section, (
+        "the demo section must document the offline (JEV_BACKEND=stub CHAT_PROVIDER=fake) run "
+        "command for demoing without real keys"
+    )
