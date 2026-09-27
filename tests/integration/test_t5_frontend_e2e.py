@@ -383,12 +383,10 @@ def test_full_not_live_suite_green_with_no_env_file():
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]
 
 
-def test_eval_runner_stub_backend_produces_report():
-    reports = ROOT / "evals" / "reports"
-    before = set(reports.glob("*")) if reports.exists() else set()
+def test_eval_runner_stub_backend_produces_report(tmp_path):
     r = subprocess.run(
-        [sys.executable, "evals/run_eval.py", "--backend", "stub"],
+        [sys.executable, "evals/run_eval.py", "--backend", "stub", "--out", str(tmp_path)],
         cwd=ROOT, env=_clean_env(), capture_output=True, text=True, timeout=300,
     )
     assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
-    assert r.stdout.strip() or (set(reports.glob("*")) - before)
+    assert r.stdout.strip() or list(tmp_path.glob("*"))
