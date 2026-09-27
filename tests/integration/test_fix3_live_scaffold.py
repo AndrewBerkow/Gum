@@ -80,10 +80,15 @@ def _skip_reason_lines(stdout: str) -> list[str]:
 # ------------------------------------------------------------------------------------------
 
 
-def test_marker_live_suite_with_no_keys_reports_only_skips_naming_missing_keys():
+def test_marker_live_suite_with_no_keys_reports_only_skips_naming_missing_keys(tmp_path):
+    # tests/live/ defaults GUM_ENV_FILE to the repo-root .env when it's unset or "" (Fix 5), so a
+    # bare _clean_env() no longer hides a real .env that happens to sit at the repo root; point
+    # GUM_ENV_FILE at an empty file to hide it explicitly, regardless of what's on disk.
+    empty_env_file = tmp_path / "empty.env"
+    empty_env_file.write_text("")
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-m", "live", "-q", "-rs", "--no-header"],
-        cwd=ROOT, env=_clean_env(), capture_output=True, text=True, timeout=60,
+        cwd=ROOT, env=_clean_env(GUM_ENV_FILE=str(empty_env_file)), capture_output=True, text=True, timeout=60,
     )
     assert r.returncode == 0, r.stdout + r.stderr
 
