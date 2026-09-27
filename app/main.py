@@ -17,6 +17,13 @@ from app.telemetry import DecisionLog, Stats, TurnRecord
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+class _LazyASGIApp:
+    """Defers calling `builder` until the wrapper is used as an ASGI app."""
+
+    def __init__(self, builder: Any) -> None:
+        self._builder = builder
+
+
 def create_app(
     settings: Settings | None = None, graph: Any = None, log: DecisionLog | None = None
 ) -> FastAPI:

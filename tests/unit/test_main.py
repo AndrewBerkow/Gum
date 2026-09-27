@@ -66,3 +66,75 @@ def test_live_mode_with_placeholder_keys_raises_config_error(tmp_path):
     s = settings(tmp_path, jev_backend="live", typesafe_api_key="ts_live_xxxx")
     with pytest.raises(ConfigError):
         create_app(s)
+
+
+# ---------------------------------------------------------------- _LazyASGIApp (t1)
+
+
+def test_lazy_asgi_app_does_not_build_until_first_call():
+    from app.main import _LazyASGIApp
+
+    build_calls = []
+    _LazyASGIApp(lambda: build_calls.append(1))
+    assert build_calls == []
+
+
+async def test_lazy_asgi_app_builds_once_forwards_calls_and_does_not_cache_a_failed_build():
+    from app.main import _LazyASGIApp
+
+    build_calls = []
+    forwarded = []
+
+    class FakeApp:
+        async def __call__(self, scope, receive, send):
+            forwarded.append((scope, receive, send))
+
+    def builder():
+        build_calls.append(1)
+        return FakeApp()
+
+    lazy = _LazyASGIApp(builder)
+    r1, s1 = object(), object()
+    r2, s2 = object(), object()
+    await lazy({"type": "http", "n": 1}, r1, s1)
+    await lazy({"type": "http", "n": 2}, r2, s2)
+
+    assert build_calls == [1], "should build exactly once across repeated calls"
+    assert forwarded == [({"type": "http", "n": 1}, r1, s1), ({"type": "http", "n": 2}, r2, s2)]
+
+    class FailingThenOk:
+        def __init__(self):
+            self.attempts = 0
+
+        def __call__(self):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise ConfigError("boom: TYPESAFE_API_KEY is missing")
+            return FakeApp()
+
+    flaky = FailingThenOk()
+    lazy2 = _LazyASGIApp(flaky)
+    with pytest.raises(ConfigError, match="TYPESAFE_API_KEY"):
+        await lazy2({"type": "http"}, r1, s1)
+    assert flaky.attempts == 1, "a failed build must not be cached"
+    await lazy2({"type": "http"}, r1, s1)  # retries the builder and succeeds this time
+    assert flaky.attempts == 2
+
+
+def test_module_level_app_is_a_lazy_wrapper_around_create_app_and_import_never_builds_it(monkeypatch):
+    import importlib
+    import sys
+
+    from app import providers
+
+    classifier_calls = []
+    monkeypatch.setattr(providers, "build_classifier", lambda *a, **k: classifier_calls.append(1))
+    for name in list(sys.modules):
+        if name == "app.main":
+            del sys.modules[name]
+
+    mod = importlib.import_module("app.main")
+
+    assert isinstance(mod.app, mod._LazyASGIApp)
+    assert mod.app._builder is mod.create_app
+    assert classifier_calls == []
