@@ -7,7 +7,7 @@ from pathlib import Path
 cmd = os.environ["INPUTS_TEST_COMMAND"]
 log = Path(os.environ["ARTIFACTS_DIR"]) / os.environ["INPUTS_TASK_ID"] / "tests-red.log"
 log.parent.mkdir(parents=True, exist_ok=True)
-result = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=900)
+result = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=1700)
 log.write_text(f"$ {cmd}\nexit {result.returncode}\n\n{result.stdout}\n{result.stderr}")
 
 if result.returncode == 0:

@@ -60,6 +60,7 @@ nodes:
         - id: tests-red
           script: tests-red
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [integration-tests]
           with:
             test_command: "$pick-task.output.test_command"
@@ -75,6 +76,7 @@ nodes:
         - id: validate-1
           script: run-tests
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [implement]
           with:
             test_command: "$pick-task.output.test_command"
@@ -102,6 +104,7 @@ nodes:
         - id: validate-2
           script: run-tests
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [fix-1]
           with:
             test_command: "$pick-task.output.test_command"
@@ -127,6 +130,7 @@ nodes:
         - id: validate-3
           script: run-tests
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [fix-2]
           with:
             test_command: "$pick-task.output.test_command"
@@ -152,6 +156,7 @@ nodes:
         - id: validate-4
           script: run-tests
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [fix-3]
           with:
             test_command: "$pick-task.output.test_command"
@@ -178,6 +183,7 @@ nodes:
         - id: halt-unless-green
           script: run-tests
           runtime: uv
+          timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
           depends_on: [validate-1, validate-2, validate-3, validate-4, diagnose]
           trigger_rule: none_failed_min_one_success
           with:
