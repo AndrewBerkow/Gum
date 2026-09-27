@@ -14,6 +14,42 @@ This document is the input to a decompose → TDD → implement workflow. Each t
 
 ---
 
+## ⚠️ Implementation rules for the automated workflow: NO REAL API KEYS
+
+**No real API keys exist in the implementation environment.** Build and test all of this plan with mocks, stubs, fakes and placeholder keys. These rules override anything that seems to conflict with them elsewhere in this document.
+
+1. **Never ask for, wait on, or create real keys.** Do not create a `.env` file. The only key-related file you write is `.env.example`, which contains placeholders only. Never stop, fail, or skip a task because a key is missing (except T13's live tests, which skip by design).
+
+2. **Use these substitutes for everything that needs a key:**
+
+   | Real dependency | Unit tests | Contract / integration tests | Running the app offline |
+   |---|---|---|---|
+   | Jev / TypeSafe API (`TYPESAFE_API_KEY`) | `FakeClassifier` (in-process `Runnable` returning real `ClassifierResponse` objects) | **Real** `TypeSafeClassifier` + `httpx2.MockTransport` serving JSON in the §0 wire format | `JEV_BACKEND=stub` → `app/jev_stub.py` behind the real classifier |
+   | Gemini API (`GOOGLE_API_KEY`) | Per-tier fake chat models (`GenericFakeChatModel`-based, with `usage_metadata`) | Same fakes, injected via `build_graph` / `create_app` | `CHAT_PROVIDER=fake` |
+   | Model construction checks | Fake but real-looking keys: `ts_live_test123`, `AIzaTEST123`. Construct only; never invoke. | — | — |
+   | Placeholder detection | Placeholder values like `ts_live_xxxx…` and `AIzaxxxx…` must be **rejected** with `ConfigError` | — | — |
+   | LangSmith tracing | Force-disabled in `conftest.py` | Force-disabled | Off unless the user enables it |
+   | Recorded Jev responses (`tests/fixtures/recorded/`) | Hand-written JSON in the §0 wire format until T13 replaces it with real recordings | same | — |
+   | Gemini prices (`MODEL_PRICES`) | Test-only prices set inside the tests | same | Empty, so cost fields are `null` |
+
+3. **Enforce "no network" in the test suite.** Add `pytest-socket` and run every non-`live` test with `--disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost,::1`. Unix sockets are allowed because asyncio's event loop uses a Unix socketpair internally. Localhost is allowed so that uvicorn and Playwright can run in T12. Any accidental call to TypeSafe or Google then **fails the test** instead of hanging or leaking. Tests marked `live` re-enable sockets.
+
+4. **Tests never read a developer's real `.env`.** Build `Settings` in tests with `_env_file=None` plus explicit values, or via `monkeypatch`. An autouse fixture deletes `TYPESAFE_API_KEY`, `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `LANGCHAIN_*` and `LANGSMITH_*` from the environment. This matters because the test suite must behave the same after a human adds real keys.
+
+5. **T13 is implemented, but it is not run by the workflow.** Write `tests/live/test_live.py` and the `--backend live` / `--judge` code paths in `evals/run_eval.py`. Every live test must **skip cleanly**, and the skip reason must name the missing variable.
+
+   The workflow's definition of done is:
+   - `uv run pytest -m "not live"` is fully green.
+   - `uv run pytest -m live` reports **only skips**, with zero failures or errors.
+   - `uv run python evals/run_eval.py --backend stub` writes a report.
+   - `JEV_BACKEND=stub CHAT_PROVIDER=fake uv run uvicorn app.main:app` serves a working UI.
+
+   Running the live suite and the vetting eval is a **human step** that happens after real keys are added.
+
+6. **Don't invent API behavior.** Mock only what §0 documents. Where something isn't verified, write the code defensively and leave a `# TODO(T13-verify): ...` comment. For example: the exact response header that carries `request_id`, whether `gemini-3.8-flash` exists, and the real prices.
+
+---
+
 ## 0. Verified facts about the dependencies (read before implementing)
 
 I checked these on 2026-09-26 against the published packages: `langchain-typesafe==0.0.1a3` (wheel inspected), `jev==0.3.0`, `langchain==1.4.2` and `langchain-google-genai==4.4.0`.
@@ -260,7 +296,7 @@ Gum/
     └── live/test_live.py       # marker live
 ```
 
-**Dependencies:** `fastapi`, `uvicorn[standard]`, `sse-starlette`, `langgraph`, `langchain`, `langchain-core`, `langchain-typesafe==0.0.1a3` (alpha, so pin it exactly), `httpx2` (already required by langchain-typesafe; imported directly for the stub), `langchain-google-genai` (4.x), `pydantic-settings`, `python-dotenv`. Dev dependencies: `pytest`, `pytest-asyncio`, `httpx` (for FastAPI's ASGI test client), `ruff`, `pyright`, `playwright`.
+**Dependencies:** `fastapi`, `uvicorn[standard]`, `sse-starlette`, `langgraph`, `langchain`, `langchain-core`, `langchain-typesafe==0.0.1a3` (alpha, so pin it exactly), `httpx2` (already required by langchain-typesafe; imported directly for the stub), `langchain-google-genai` (4.x), `pydantic-settings`, `python-dotenv`. Dev dependencies: `pytest`, `pytest-asyncio`, `pytest-socket` (blocks outbound network in tests; see the Implementation rules), `httpx` (for FastAPI's ASGI test client), `ruff`, `pyright`, `playwright`.
 **Pytest markers:** `e2e` and `live`. The default run is `-m "not live"`.
 
 **Testability rule:** the classifier, the chat models, the clock and the decision-log sink are always **injected**, through `build_graph(...)` and `create_app(...)`. No unit test touches the network.
@@ -290,6 +326,8 @@ Settings:
 - `has_real_key` returns false for `ts_live_xxxx…`, `AIzaxxxx…`, `""` and `None`, and true for `ts_live_abc123`.
 - A `GEMINI_API_KEY`-only environment populates `google_api_key`.
 - Importing with no environment variables set does not crash.
+- **The network guard works:** a sanity test that tries to open a socket to `api.typesafe.ai` fails with `SocketBlockedError`.
+- `Settings(_env_file=None)` ignores a `.env` file in the working directory. Test this by writing a temporary `.env` containing a fake key and asserting that it isn't loaded.
 - An autouse fixture clears tracing variables and provider keys.
 
 ### T2 — State types
