@@ -376,15 +376,19 @@ def test_full_not_live_suite_with_fake_dotenv_is_green_and_leaves_git_status_unc
     assert after == before, f"full suite run left new/changed git-status lines: {after - before}"
 
 
-def test_full_not_live_suite_without_dotenv_is_green_and_leaves_git_status_unchanged():
+def test_full_not_live_suite_without_dotenv_is_green_and_leaves_git_status_unchanged(tmp_path):
     if is_nested_suite():
         pytest.skip("already running inside a nested full-suite invocation")
-    assert not ROOT.joinpath(".env").exists(), "this test expects no real .env; found one at repo root"
+
+    empty_env_file = tmp_path / "empty.env"
+    empty_env_file.write_text("")
 
     before = _git_status()
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--ignore={THIS_FILE}"],
-        cwd=ROOT, env=nested_suite_env(_clean_env()), capture_output=True, text=True, timeout=500,
+        cwd=ROOT,
+        env=nested_suite_env(_clean_env(GUM_ENV_FILE=str(empty_env_file))),
+        capture_output=True, text=True, timeout=500,
     )
     after = _git_status()
 
