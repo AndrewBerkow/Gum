@@ -1,0 +1,166 @@
+name: tdd-execute
+description: |
+  Archon Execution Framework: take an execution plan (default PLAN.md), split it
+  into 3-5 independently testable tasks, then run each task in order:
+  top-level integration tests first (proven red), micro-task red/green/refactor,
+  and top-level validation with one fix attempt. If validation fails a second
+  time, write a diagnostic report and halt: fix the code, then
+  `archon workflow resume`. After each task passes, the run pauses for human
+  approval before the next task starts.
+  Use: archon workflow run tdd-execute --branch <name> "Execute PLAN.md"
+model: large
+interactive: true
+worktree:
+  enabled: true
+inputs:
+  plan:
+    default: PLAN.md
+    description: Path to the execution plan, relative to the repo root
+
+nodes:
+  # ---- 1. Plan decomposition (macro level) ----
+  - id: decompose
+    command: decompose
+    output_format:
+      type: object
+      properties:
+        task_count: {type: integer}
+      required: [task_count]
+
+  - id: check-decomposition
+    script: check-decomposition
+    runtime: uv
+    depends_on: [decompose]
+
+  # approve: start task 1. reject: cancels the run.
+  - id: approve-decomposition
+    depends_on: [check-decomposition]
+    approval:
+      message: "Review the task breakdown in $ARTIFACTS_DIR/tasks.md. Approve to start Sub-Workflow 1, reject to cancel the run."
+
+  # ---- 2-4. Per-task sub-workflow, one task per iteration ----
+  - id: task-cycle
+    depends_on: [approve-decomposition]
+    loop_group:
+      max_iterations: 5
+      # Ends after the last task. Rejecting approve-next cancels the run instead.
+      until_bash: 'test "$record-progress.output.all_done" = "true"'
+      nodes:
+        - id: pick-task
+          script: pick-task
+          runtime: uv
+          output_format:
+            type: object
+            properties:
+              index: {type: integer}
+              task_id: {type: string}
+              title: {type: string}
+              test_command: {type: string}
+              total: {type: integer}
+            required: [index, task_id, title, test_command, total]
+
+        # 3.1 Top-level integration tests, no functional code
+        - id: integration-tests
+          command: integration-tests
+          depends_on: [pick-task]
+          context: fresh
+
+        - id: tests-red
+          script: tests-red
+          runtime: uv
+          depends_on: [integration-tests]
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+
+        # 3.2 + 3.3 Micro-task breakdown and micro-TDD loop
+        - id: implement
+          command: implement
+          depends_on: [tests-red]
+
+        # 3.4 Top-level validation, attempt 1
+        - id: validate-1
+          script: run-tests
+          runtime: uv
+          depends_on: [implement]
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+            attempt: "1"
+            strict: "false"
+          output_format:
+            type: object
+            properties:
+              passed: {type: boolean}
+              log_path: {type: string}
+            required: [passed, log_path]
+
+        # 3.5 First failure: route back to implementation
+        - id: fix
+          command: fix
+          depends_on: [validate-1]
+          when: "$validate-1.output.passed == false"
+
+        - id: validate-2
+          script: run-tests
+          runtime: uv
+          depends_on: [fix]
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+            attempt: "2"
+            strict: "false"
+          output_format:
+            type: object
+            properties:
+              passed: {type: boolean}
+              log_path: {type: string}
+            required: [passed, log_path]
+
+        # 3.5 Second failure: diagnostic report, then halt
+        - id: diagnose
+          command: diagnose
+          depends_on: [validate-2]
+          when: "$validate-2.output.passed == false"
+          context: fresh
+
+        # Halts the run while the tests are red. After a human fixes the code,
+        # `archon workflow resume <run-id>` re-runs this and continues if green.
+        # Runs only if nothing upstream failed (the fix/diagnose branch may be skipped).
+        - id: halt-unless-green
+          script: run-tests
+          runtime: uv
+          depends_on: [validate-1, validate-2, diagnose]
+          trigger_rule: none_failed_min_one_success
+          with:
+            test_command: "$pick-task.output.test_command"
+            task_id: "$pick-task.output.task_id"
+            attempt: "final"
+            strict: "true"
+
+        # 4. Completion summary + approval gate
+        - id: summarize
+          command: summarize
+          depends_on: [halt-unless-green]
+          context: fresh
+
+        - id: record-progress
+          script: record-progress
+          runtime: uv
+          depends_on: [summarize]
+          with:
+            task_id: "$pick-task.output.task_id"
+          output_format:
+            type: object
+            properties:
+              all_done: {type: boolean}
+              next_title: {type: string}
+            required: [all_done, next_title]
+
+        # Must stay the body's only terminal node so it pauses the loop.
+        # Last task: skipped, and the run completes.
+        - id: approve-next
+          depends_on: [record-progress]
+          when: "$record-progress.output.all_done == false"
+          approval:
+            message: "Task $pick-task.output.index of $pick-task.output.total completed and validated (summary: $ARTIFACTS_DIR/$pick-task.output.task_id/summary.md). Approve to proceed to next sub-workflow: $record-progress.output.next_title. Reject to stop the run."

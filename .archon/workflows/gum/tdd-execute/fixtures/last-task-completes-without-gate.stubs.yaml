@@ -1,0 +1,14 @@
+# Final task: record-progress reports all_done, so approve-next is skipped and the run completes.
+decompose: {task_count: 3}
+check-decomposition: "3 tasks OK"
+integration-tests: "stub: integration tests written and committed"
+tests-red: "red as expected (exit 1)"
+implement: "stub: micro-tasks done"
+pick-task: {index: 3, task_id: t3, title: "Frontend", test_command: "stub", total: 3}
+validate-1: {passed: true, log_path: "stub/validate-1.log"}
+halt-unless-green: '{"passed": true, "log_path": "stub/validate-final.log"}'
+summarize: "stub: summary written"
+record-progress: {all_done: true, next_title: ""}
+fixture:
+  expect: completed
+  reached: [record-progress]

@@ -1,0 +1,17 @@
+# Red path: two failed validations -> diagnose runs, then the real halt script
+# re-runs the (still failing) tests and fails the run for human intervention.
+decompose: {task_count: 3}
+check-decomposition: "3 tasks OK"
+integration-tests: "stub: integration tests written and committed"
+tests-red: "red as expected (exit 1)"
+implement: "stub: micro-tasks done"
+pick-task: {index: 1, task_id: t1, title: "Guardrail", test_command: "exit 1", total: 3}
+validate-1: {passed: false, log_path: "stub/validate-1.log"}
+fix: "stub: attempted fix"
+validate-2: {passed: false, log_path: "stub/validate-2.log"}
+diagnose: "stub: diagnosis.md written"
+exec-code: true
+fixture:
+  expect: failed
+  fail-node: [halt-unless-green, task-cycle]
+  reached: [diagnose]

@@ -1,0 +1,10 @@
+# Red path: integration tests that already pass before implementation are not
+# testing new behavior; the real tests-red script must stop the task.
+decompose: {task_count: 3}
+check-decomposition: "3 tasks OK"
+integration-tests: "stub: tests written"
+pick-task: {index: 1, task_id: t1, title: "Guardrail", test_command: "true", total: 3}
+exec-code: true
+fixture:
+  expect: failed
+  fail-node: [tests-red, task-cycle]
