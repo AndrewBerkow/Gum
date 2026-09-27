@@ -35,6 +35,17 @@ def test_readme_live_mode_section_names_both_keys():
     assert "GOOGLE_API_KEY" in section
 
 
+def test_readme_live_mode_section_documents_dotenv_setup_and_gum_env_file():
+    section = _section("live")
+    assert "cp .env.example .env" in section
+    assert "chmod 600 .env" in section
+    assert "GUM_ENV_FILE" in section
+    lower = section.lower()
+    assert "export" in lower or "shell" in lower, (
+        "the live section must explain why exported shell variables aren't read by the tests"
+    )
+
+
 def test_readme_test_tiers_section():
     section = _section("test tier")
     lower = section.lower()

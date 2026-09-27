@@ -24,10 +24,17 @@ guardrail/route/token/done events over SSE, and blocks obvious prompt injections
 
 ## Live mode
 
-With real keys, `app.main.app` builds the real Jev classifier and real Gemini chat models:
+Put real keys in a gitignored `.env` file at the repo root, not in exported shell variables:
 
 ```
-TYPESAFE_API_KEY=... GOOGLE_API_KEY=... uv run uvicorn app.main:app
+cp .env.example .env && chmod 600 .env
+```
+
+Then edit `.env` to set `TYPESAFE_API_KEY` and `GOOGLE_API_KEY`. With that `.env` in place,
+`app.main.app` builds the real Jev classifier and real Gemini chat models:
+
+```
+uv run uvicorn app.main:app
 ```
 
 - `TYPESAFE_API_KEY` — Jev / TypeSafe, from https://console.typesafe.ai/. Required whenever
@@ -36,6 +43,18 @@ TYPESAFE_API_KEY=... GOOGLE_API_KEY=... uv run uvicorn app.main:app
 - `GOOGLE_API_KEY` (or `GEMINI_API_KEY` as a fallback) — Google Gemini, from
   https://aistudio.google.com/apikey. Required whenever `CHAT_PROVIDER=google_genai` (the
   default), and for `evals/run_eval.py --judge`.
+
+**Exported shell variables aren't read by the tests.** `tests/conftest.py` sets `GUM_ENV_FILE=""`
+for the whole offline suite, so `Settings()` never reads any `.env` file while testing (a real key
+you merely `export`ed would still leak into `Settings()` via `os.environ`, which is exactly what
+that isolation is guarding against). The `live`-marked tier is the one exception: it defaults
+`GUM_ENV_FILE` back to the repo-root `.env` so `uv run pytest -m live` "just works" once you've
+`cp .env.example .env`'d a real one.
+
+`GUM_ENV_FILE` — the path `Settings()` reads as its env file; defaults to `.env`. Set it to `""` to
+read no env file at all, or to another path to use a different one. `evals/run_eval.py --backend
+live` honours it the same way the app does; `--backend stub` always ignores it, so stub reports
+stay deterministic.
 
 See `.env.example` for the full list of settings (thresholds, model ids, timeouts).
 
