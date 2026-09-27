@@ -182,6 +182,121 @@ def evaluate(
     return decision, route
 
 
+def _one_liner(
+    *,
+    p_unsafe: float,
+    block_threshold: float,
+    unsafe_blocked: bool,
+    scope_choice: str,
+    p_scope: float,
+    scope_blocked: bool,
+    scope_reason: str | None,
+    p_simple: float,
+    route_lite_threshold: float,
+    tier: str,
+) -> str:
+    parts = [f"p_unsafe {p_unsafe:.2f} {'>' if unsafe_blocked else '≤'} {block_threshold:.2f}"]
+    if unsafe_blocked:
+        return " · ".join(parts) + " → blocked (unsafe)"
+
+    if scope_blocked:
+        parts.append(f"scope {scope_choice} {p_scope:.2f} > {block_threshold:.2f}")
+        return " · ".join(parts) + f" → blocked ({scope_reason})"
+    parts.append(f"scope {scope_choice} {p_scope:.2f}")
+
+    complexity_cmp = "≥" if p_simple >= route_lite_threshold else "<"
+    parts.append(f"p_simple {p_simple:.2f} {complexity_cmp} {route_lite_threshold:.2f}")
+    return " · ".join(parts) + f" → {tier}"
+
+
+def explain_decision(
+    response: ClassifierResponse | None,
+    decision: JevDecision,
+    route: RouteDecision | None,
+    *,
+    block_threshold: float,
+    route_lite_threshold: float,
+) -> dict[str, Any]:
+    """Build the rich `jev.decision` dev-log payload from `evaluate`'s own decision and route.
+
+    Reuses `evaluate`'s numbers and its exact `>` / `≥` operators -- never a different
+    threshold-crossing result than `evaluate` itself reached.
+    """
+    if response is None or decision["status"] == "error":
+        return {
+            "outcome": decision["status"],
+            "reason": decision["reason"],
+            "unsafe": None,
+            "scope": None,
+            "complexity": None,
+            "distribution_concentration": None,
+            "route": None,
+            "explanation": f"{decision['reason']} → error",
+        }
+
+    unsafe = response.answers["unsafe"]
+    scope = response.answers["scope"]
+    complexity = response.answers["complexity"]
+    assert isinstance(unsafe, NoulAnswer)
+    assert isinstance(scope, ChoiceAnswer)
+    assert isinstance(complexity, ChoiceAnswer)
+
+    p_unsafe = unsafe.noul
+    p_scope = scope.probabilities[scope.choice]
+    p_simple = complexity.probabilities["simple"]
+    jev_tier: Tier = "lite" if p_simple >= route_lite_threshold else "flash"
+
+    unsafe_blocked = decision["reason"] == "unsafe"
+    scope_blocked = decision["reason"] == scope.choice
+
+    route_detail = (
+        {"jev_tier": route["jev_tier"], "tier": route["tier"], "source": route["source"]}
+        if route is not None
+        else None
+    )
+
+    return {
+        "outcome": decision["status"],
+        "reason": decision["reason"],
+        "unsafe": {
+            "p": p_unsafe,
+            "threshold": block_threshold,
+            "comparison": ">",
+            "verdict": "blocked" if unsafe_blocked else "safe",
+        },
+        "scope": {
+            "choice": scope.choice,
+            "probabilities": dict(scope.probabilities),
+            "threshold": block_threshold,
+            "comparison": ">",
+            "verdict": "blocked" if scope_blocked else "safe",
+        },
+        "complexity": {
+            "p_simple": p_simple,
+            "threshold": route_lite_threshold,
+            "comparison": "≥",
+            "tier": jev_tier,
+        },
+        "distribution_concentration": {
+            "scope": scope.confidence,
+            "complexity": complexity.confidence,
+        },
+        "route": route_detail,
+        "explanation": _one_liner(
+            p_unsafe=p_unsafe,
+            block_threshold=block_threshold,
+            unsafe_blocked=unsafe_blocked,
+            scope_choice=scope.choice,
+            p_scope=p_scope,
+            scope_blocked=scope_blocked,
+            scope_reason=decision["reason"],
+            p_simple=p_simple,
+            route_lite_threshold=route_lite_threshold,
+            tier=route["tier"] if route is not None else jev_tier,
+        ),
+    }
+
+
 def make_jev_gate_node(classifier: Any, settings: Settings):
     """Return the async `jev_gate` node: one classifier call per turn, fail closed."""
     tiers: dict[Tier, str] = {"flash": settings.chat_model_flash, "lite": settings.chat_model_lite}
