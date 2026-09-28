@@ -57,11 +57,16 @@ nodes:
           depends_on: [pick-task]
           context: fresh
 
+        # The agent sometimes forgets to commit its tests; commit them deterministically.
+        - id: commit-tests
+          bash: 'git add -A tests && (git diff --cached --quiet || git commit -q -m "test($pick-task.output.task_id): top-level integration tests") && git log --oneline -1'
+          depends_on: [integration-tests]
+
         - id: tests-red
           script: tests-red
           runtime: uv
           timeout: 1800000  # 30 min: test suites can run long (Archon's script default is 2 min)
-          depends_on: [integration-tests]
+          depends_on: [commit-tests]
           with:
             test_command: "$pick-task.output.test_command"
             task_id: "$pick-task.output.task_id"

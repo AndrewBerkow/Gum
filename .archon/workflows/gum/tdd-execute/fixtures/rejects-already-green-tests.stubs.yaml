@@ -3,6 +3,7 @@
 decompose: {task_count: 3}
 check-decomposition: "3 tasks OK"
 integration-tests: "stub: tests written"
+commit-tests: "abc1234 test(t1): top-level integration tests"
 pick-task: {index: 1, task_id: t1, title: "Guardrail", test_command: "true", total: 3}
 exec-code: true
 fixture:

@@ -2,6 +2,7 @@
 decompose: {task_count: 3}
 check-decomposition: "3 tasks OK"
 integration-tests: "stub: integration tests written and committed"
+commit-tests: "abc1234 test(t1): top-level integration tests"
 tests-red: "red as expected (exit 1)"
 implement: "stub: micro-tasks done"
 pick-task: {index: 1, task_id: t1, title: "Guardrail", test_command: "stub", total: 3}
