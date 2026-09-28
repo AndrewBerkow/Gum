@@ -39,3 +39,23 @@ def _clean_env(monkeypatch):
             monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LANGCHAIN_TRACING_V2", "false")
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
+
+
+_SYNC_PLAYWRIGHT_FIXTURES = ("browser", "page")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Within each module, run tests that don't use the sync-Playwright `browser`/`page` fixtures
+    (notably the async API tests) before the ones that do. A module-scoped sync Playwright fixture
+    leaves an event loop marked as running in this thread until the module ends, so an async test
+    scheduled after it fails with "Runner.run() cannot be called from a running event loop".
+    The sort is stable, and modules keep their relative order."""
+    module_order: dict[object, int] = {}
+    for item in items:
+        module_order.setdefault(getattr(item, "module", None), len(module_order))
+
+    def key(item):
+        uses_browser = any(f in _SYNC_PLAYWRIGHT_FIXTURES for f in getattr(item, "fixturenames", ()))
+        return module_order[getattr(item, "module", None)], uses_browser
+
+    items.sort(key=key)
