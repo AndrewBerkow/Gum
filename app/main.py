@@ -71,7 +71,7 @@ def create_app(
         )
 
     @app.get("/api/devlog")
-    async def devlog_stream(request: Request) -> EventSourceResponse:
+    async def devlog_stream(request: Request, replay: str = "1") -> EventSourceResponse:
         if not settings.devlog_enabled:
             raise HTTPException(status_code=404)
         host = request.client.host if request.client else None
@@ -79,7 +79,7 @@ def create_app(
             raise HTTPException(status_code=403)
 
         async def gen():
-            async for name, data in bus.stream():
+            async for name, data in bus.stream(replay=replay != "0"):
                 yield {"event": name, "data": json.dumps(data)}
 
         return EventSourceResponse(gen())
