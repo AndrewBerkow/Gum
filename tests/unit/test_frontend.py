@@ -385,3 +385,30 @@ def test_clear_button_removes_cards_and_resets_card_counter(page):
         }"""
     )
     assert out == {"before": 2, "after": 0, "idx": "#1", "count": 1}
+
+
+def test_clear_button_clears_chat_and_rotates_thread_id(page):
+    out = page.evaluate(
+        """() => {
+            const before = threadId();
+            line("hello", "user");
+            const hadChat = document.getElementById("log").textContent !== "";
+            document.querySelector('[data-testid="devlog-clear"]').click();
+            return {hadChat, chat: document.getElementById("log").textContent,
+                    changed: sessionStorage.getItem("thread_id") !== before};
+        }"""
+    )
+    assert out == {"hadChat": True, "chat": "", "changed": True}
+
+
+def test_slash_clear_command_also_clears_console(page):
+    out = page.evaluate(
+        """async () => {
+            handleDevlogEvent({event: "turn.start", data: {turn_id: "a", message: "one"}});
+            const before = document.querySelectorAll('[data-testid="devlog-card"]').length;
+            await submit("/clear");
+            return {before, after: document.querySelectorAll('[data-testid="devlog-card"]').length,
+                    chat: document.getElementById("log").textContent};
+        }"""
+    )
+    assert out == {"before": 1, "after": 0, "chat": ""}

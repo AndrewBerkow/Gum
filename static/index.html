@@ -413,6 +413,14 @@ async function showStats() {
   } catch (e) { line(`[ERROR: ${e.message}]`, "red"); }
 }
 
+// Shared by the /clear command and the console's Clear button: empty chat and console, new thread.
+function resetConversation() {
+  sessionStorage.setItem("thread_id", newThreadId());
+  logEl.textContent = "";
+  stick = true;
+  clearDevlog();
+}
+
 async function submit(text) {
   const cmd = parseCommand(text);
   if (!cmd) { line(`[${tier}] > ${text}`, "user"); await chat(text); return; }
@@ -421,11 +429,8 @@ async function submit(text) {
     if (["auto", "flash", "lite"].includes(cmd.arg)) { tier = cmd.arg; setPrefix(); line(`model override: ${tier}`, "dim"); }
     else line("usage: /model auto|flash|lite", "amber");
   } else if (cmd.name === "stats") await showStats();
-  else if (cmd.name === "clear") {
-    sessionStorage.setItem("thread_id", newThreadId());
-    logEl.textContent = "";
-    stick = true;
-  } else if (cmd.name === "devlog") toggleDevlogVisible();
+  else if (cmd.name === "clear") resetConversation();
+  else if (cmd.name === "devlog") toggleDevlogVisible();
   else line(`unknown command: /${cmd.name}`, "amber");
 }
 
@@ -524,7 +529,7 @@ function clearDevlog() {
   devlogOrder.length = 0;
   devlogCardsEl.textContent = "";
 }
-document.querySelector('[data-testid="devlog-clear"]').addEventListener("click", clearDevlog);
+document.querySelector('[data-testid="devlog-clear"]').addEventListener("click", resetConversation);
 
 async function connectDevlog() {
   for (;;) {
