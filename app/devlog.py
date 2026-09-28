@@ -65,11 +65,11 @@ class DevLogBus:
     def unsubscribe(self, queue: "asyncio.Queue[Event]") -> None:
         self._subscribers.discard(queue)
 
-    async def stream(self) -> AsyncIterator[Event]:
-        """Buffered history first, then live events, until the consumer stops iterating."""
+    async def stream(self, replay: bool = True) -> AsyncIterator[Event]:
+        """Buffered history first (unless `replay` is False), then live events, until the consumer stops iterating."""
         history, queue = self.subscribe()
         try:
-            for item in history:
+            for item in history if replay else ():
                 yield item
             while True:
                 yield await queue.get()

@@ -51,3 +51,17 @@ async def test_publish_drops_oldest_item_when_subscriber_queue_is_full():
     first = await asyncio.wait_for(queue.get(), timeout=1)
     second = await asyncio.wait_for(queue.get(), timeout=1)
     assert [first[1]["n"], second[1]["n"]] == [2, 3]
+
+
+async def test_stream_without_replay_skips_history_and_yields_only_new_events():
+    bus = DevLogBus()
+    bus.publish("turn.start", {"n": 1})
+
+    gen = bus.stream(replay=False)
+    nxt = asyncio.ensure_future(gen.__anext__())
+    await asyncio.sleep(0)
+    bus.publish("turn.start", {"n": 2})
+    got = await asyncio.wait_for(nxt, timeout=1)
+    await gen.aclose()
+
+    assert got == ("turn.start", {"n": 2})
