@@ -519,6 +519,13 @@ function handleDevlogEvent(ev) {
   renderDevlogCard(turnId);
 }
 
+function clearDevlog() {
+  devlogTurns.clear();
+  devlogOrder.length = 0;
+  devlogCardsEl.textContent = "";
+}
+document.querySelector('[data-testid="devlog-clear"]').addEventListener("click", clearDevlog);
+
 async function connectDevlog() {
   for (;;) {
     try {

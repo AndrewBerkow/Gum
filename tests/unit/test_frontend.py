@@ -369,3 +369,19 @@ def test_devlog_header_has_clear_button_next_to_status_dot(page):
         }"""
     )
     assert out == {"title": "Clear console and chat", "tag": "BUTTON", "type": "button", "sameHeader": True}
+
+
+def test_clear_button_removes_cards_and_resets_card_counter(page):
+    out = page.evaluate(
+        """() => {
+            handleDevlogEvent({event: "turn.start", data: {turn_id: "a", message: "one"}});
+            handleDevlogEvent({event: "turn.start", data: {turn_id: "b", message: "two"}});
+            const before = document.querySelectorAll('[data-testid="devlog-card"]').length;
+            document.querySelector('[data-testid="devlog-clear"]').click();
+            const after = document.querySelectorAll('[data-testid="devlog-card"]').length;
+            handleDevlogEvent({event: "turn.start", data: {turn_id: "c", message: "three"}});
+            const idx = document.querySelector('.devlog-turn-index').textContent;
+            return {before, after, idx, count: document.querySelectorAll('[data-testid="devlog-card"]').length};
+        }"""
+    )
+    assert out == {"before": 2, "after": 0, "idx": "#1", "count": 1}
