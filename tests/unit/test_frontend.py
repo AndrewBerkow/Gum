@@ -353,3 +353,19 @@ def test_devlog_connect_url_uses_replay_0_for_every_connect():
     # the single connect loop (initial connect and every reconnect) must ask for replay=0
     assert len(fetches) == 1
     assert "replay=0" in fetches[0]
+
+
+def test_devlog_header_has_clear_button_next_to_status_dot(page):
+    out = page.evaluate(
+        """() => {
+            const b = document.querySelector('[data-testid="devlog-clear"]');
+            const s = document.querySelector('[data-testid="devlog-status"]');
+            return b && {
+                title: b.getAttribute('title'),
+                tag: b.tagName,
+                type: b.getAttribute('type'),
+                sameHeader: b.parentElement.id === 'devlog-header' && b.parentElement === s.parentElement,
+            };
+        }"""
+    )
+    assert out == {"title": "Clear console and chat", "tag": "BUTTON", "type": "button", "sameHeader": True}

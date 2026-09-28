@@ -31,6 +31,10 @@
   [data-testid="devlog-status"][data-state="live"] { background: var(--green); }
   [data-testid="devlog-status"][data-state="reconnecting"] { background: var(--amber); }
   [data-testid="devlog-status"][data-state="disabled"] { background: var(--dim); }
+  [data-testid="devlog-clear"] { margin-left: auto; background: transparent; color: var(--accent);
+                                 border: 1px solid var(--border); border-radius: 3px; font: inherit;
+                                 font-size: 11px; padding: 1px 8px; cursor: pointer; }
+  [data-testid="devlog-clear"]:hover { border-color: var(--accent); }
   #devlog-cards { flex: 1; overflow-y: auto; padding: 8px 10px; }
   [data-testid="devlog-card"] { border: 1px solid var(--border); border-radius: 4px;
                                  padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
@@ -80,6 +84,7 @@
     <div id="devlog-header">
       <span data-testid="devlog-status" data-state="reconnecting"></span>
       <span class="dim">Jev dev console</span>
+      <button type="button" data-testid="devlog-clear" title="Clear console and chat">clear</button>
     </div>
     <div id="devlog-cards"></div>
   </div>
