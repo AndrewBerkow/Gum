@@ -5,7 +5,7 @@ every later async test fail with "Runner.run() cannot be called from a running e
 
 from types import SimpleNamespace
 
-import tests.conftest as conftest
+from tests import conftest
 
 
 def _item(name, module, *, fixtures=(), is_async=False):

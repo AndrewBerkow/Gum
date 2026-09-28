@@ -188,15 +188,17 @@ def test_card_count_equals_number_of_turns_sent(page, offline_url):
     assert cards(page).count() == 3
 
 
-def test_reloading_page_restores_recent_cards_from_ring_buffer(page, offline_url):
+def test_reloading_page_starts_with_an_empty_console(page, offline_url):
     open_page(page, offline_url)
     send(page, SIMPLE)
     send(page, COMPLEX_PROMPT)
     wait_for_cards(page, 2)
     page.reload()
     page.wait_for_selector("input")
-    wait_for_cards(page, 2)
-    assert cards(page).count() == 2
+    # the console is connected (and would have replayed the ring buffer by now) but stays empty
+    page.wait_for_selector('[data-testid="devlog-status"][data-state="live"]')
+    page.wait_for_timeout(500)
+    assert cards(page).count() == 0
 
 
 # ---------------------------------------------------------------- criterion 5: toggle / stacking
