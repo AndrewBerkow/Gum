@@ -517,7 +517,7 @@ function handleDevlogEvent(ev) {
 async function connectDevlog() {
   for (;;) {
     try {
-      const res = await fetch("/api/devlog");
+      const res = await fetch("/api/devlog?replay=0");
       if (res.status === 403 || res.status === 404) { setDevlogStatus("disabled"); return; }
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
       setDevlogStatus("live");

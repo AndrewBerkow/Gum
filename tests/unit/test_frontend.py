@@ -343,3 +343,13 @@ def test_devlog_visibility_persists_through_local_storage_and_survives_a_throwin
         }"""
     )
     assert out == [True, False, True]
+
+
+# 11. devlog console: replay=0 and Clear button
+def test_devlog_connect_url_uses_replay_0_for_every_connect():
+    html = INDEX.read_text()
+    fetches = re.findall(r'fetch\(\s*([^)]*?/api/devlog[^)]*)\)', html)
+    assert fetches, "no /api/devlog fetch found"
+    # the single connect loop (initial connect and every reconnect) must ask for replay=0
+    assert len(fetches) == 1
+    assert "replay=0" in fetches[0]
