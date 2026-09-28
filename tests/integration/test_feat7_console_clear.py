@@ -196,34 +196,49 @@ class Stream:
         self._client = httpx.AsyncClient(timeout=None)
         self._cm = None
         self._resp = None
+        self._lines = None
+        self._pending = None
+        self._name, self._data = None, []
 
     async def open(self):
         self._cm = self._client.stream("GET", self.url)
         self._resp = await self._cm.__aenter__()
         assert self._resp.status_code == 200
+        self._lines = self._resp.aiter_lines()
 
     async def read_until(self, predicate, timeout):
-        async def loop():
-            name, data = None, []
-            async for line in self._resp.aiter_lines():
-                if line.startswith("event:"):
-                    name = line[6:].strip()
-                elif line.startswith("data:"):
-                    data.append(line[5:].lstrip())
-                elif not line.strip():
-                    if name is not None and data:
-                        self.events.append((name, json.loads("\n".join(data))))
-                    name, data = None, []
-                    if predicate(self.events):
-                        return True
-            return False
-
-        try:
-            return await asyncio.wait_for(loop(), timeout=timeout)
-        except TimeoutError:
-            return False
+        # A timeout must not cancel the read in flight: cancelling inside `aiter_lines()` finalizes
+        # it. Keep the pending `__anext__` task across calls and only wait on it.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            if self._pending is None:
+                self._pending = asyncio.ensure_future(self._lines.__anext__())
+            remaining = deadline - loop.time()
+            if (
+                remaining <= 0
+                or not (await asyncio.wait({self._pending}, timeout=remaining))[0]
+            ):
+                return False
+            task, self._pending = self._pending, None
+            try:
+                line = task.result()
+            except StopAsyncIteration:
+                return False
+            if line.startswith("event:"):
+                self._name = line[6:].strip()
+            elif line.startswith("data:"):
+                self._data.append(line[5:].lstrip())
+            elif not line.strip():
+                if self._name is not None and self._data:
+                    self.events.append((self._name, json.loads("\n".join(self._data))))
+                self._name, self._data = None, []
+                if predicate(self.events):
+                    return True
 
     async def close(self):
+        if self._pending is not None:
+            self._pending.cancel()
         if self._cm is not None:
             await self._cm.__aexit__(None, None, None)
         await self._client.aclose()
