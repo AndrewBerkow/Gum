@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Live view of an Archon workflow run: task progress plus every node's state.
+
+Usage: archon-watch [run-id] [--interval SECONDS]
+Run from the project directory. With no run id, watches the newest run there.
+Install: ln -s "$PWD/tools/archon-watch" ~/.local/bin/archon-watch  (from the repo root)
+"""
+import argparse
+import datetime as dt
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# Node order for tdd-execute; other workflows fall back to the order Archon reports.
+TOP = ["decompose", "check-decomposition", "task-cycle"]
+BODY = ["pick-task", "integration-tests", "commit-tests", "tests-red", "implement",
+        "validate-1", "fix-1", "validate-2", "fix-2", "validate-3", "fix-3",
+        "validate-4", "diagnose", "halt-unless-green", "summarize", "record-progress"]
+
+C = {"completed": "\033[32m", "running": "\033[33;1m", "failed": "\033[31;1m",
+     "skipped": "\033[90m", "pending": "\033[90m", "paused": "\033[35m",
+     "cancelled": "\033[31m", "bold": "\033[1m", "dim": "\033[2m", "reset": "\033[0m"}
+ICON = {"completed": "✔", "running": "▶", "failed": "✘", "skipped": "–",
+        "pending": "·", "paused": "⏸", "cancelled": "■"}
+
+
+def archon(*args):
+    out = subprocess.run(["archon", *args, "--json"], capture_output=True, text=True).stdout
+    return json.loads(out[out.index("{"):]) if "{" in out else None
+
+
+def elapsed(node):
+    if node.get("durationMs") is not None:
+        secs = node["durationMs"] / 1000
+    elif node.get("startedAt"):
+        start = dt.datetime.strptime(node["startedAt"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
+        secs = (dt.datetime.now(dt.timezone.utc) - start).total_seconds()
+    else:
+        return ""
+    return f"{int(secs // 60)}m{int(secs % 60):02d}s" if secs >= 60 else f"{secs:.0f}s" if secs >= 1 else "<1s"
+
+
+def row(name, node, indent=""):
+    state = node.get("state", "pending") if node else "pending"
+    preview = (node or {}).get("outputPreview") or ""
+    preview = preview.replace("\n", " ")[:70]
+    return (f"{indent}{C.get(state, '')}{ICON.get(state, '?')} {name:<22}{state:<10}{C['reset']}"
+            f"{elapsed(node or {}):>8}  {C['dim']}{preview}{C['reset']}")
+
+
+def iteration(node):
+    loop = ((node.get("execution") or {}).get("invocation") or {}).get("loopPath") or []
+    return loop[-1]["iteration"] if loop else 0
+
+
+def render(run_id):
+    run = archon("workflow", "get", run_id, "--verbose")
+    if not run:
+        return f"Could not read run {run_id}", "unknown"
+    nodes = run.get("nodes") or []
+    lines = [f"{C['bold']}{run['workflow_name']}{C['reset']}  run {run_id[:12]}  "
+             f"status: {C.get(run['status'], '')}{run['status']}{C['reset']}  "
+             f"{C['dim']}{dt.datetime.now():%H:%M:%S}{C['reset']}", ""]
+
+    # Task progress from the run's artifacts
+    artifacts = Path(run.get("output_root", "")) / "artifacts" / "runs" / run_id
+    tasks_file, progress_file = artifacts / "tasks.json", artifacts / "progress.json"
+    current_iter = max([iteration(n) for n in nodes] or [0])
+    if tasks_file.is_file():
+        tasks = json.loads(tasks_file.read_text())["tasks"]
+        done = json.loads(progress_file.read_text())["done"] if progress_file.is_file() else []
+        lines.append(f"{C['bold']}Tasks ({len(done)}/{len(tasks)} done){C['reset']}")
+        current = next((t["id"] for t in tasks if t["id"] not in done), None)
+        for t in tasks:
+            state = "completed" if t["id"] in done else ("running" if t["id"] == current and run["status"] == "running" else
+                                                         "failed" if t["id"] == current and run["status"] == "failed" else "pending")
+            lines.append(f"  {C[state]}{ICON[state]} {t['id']:<4}{t['title']}{C['reset']}")
+        lines.append("")
+
+    # Top-level nodes, then the current loop iteration's body
+    by_id = {n["nodeId"]: n for n in nodes if iteration(n) == 0}
+    body = {n["nodeId"].split(".", 1)[1]: n for n in nodes
+            if "." in n["nodeId"] and iteration(n) == current_iter}
+    known = run["workflow_name"] == "tdd-execute"
+    lines.append(f"{C['bold']}Steps{C['reset']}")
+    for name in (TOP if known else list(by_id)):
+        lines.append(row(name, by_id.get(name), "  "))
+        if name == "task-cycle" and (body or known):
+            lines.append(f"    {C['dim']}iteration {current_iter or 1}{C['reset']}")
+            for b in (BODY if known else list(body)):
+                lines.append(row(b, body.get(b), "    "))
+    return "\n".join(lines), run["status"]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("run_id", nargs="?")
+    ap.add_argument("--interval", type=float, default=5)
+    args = ap.parse_args()
+    run_id = args.run_id
+    if not run_id:
+        runs = (archon("workflow", "runs") or {}).get("runs") or []
+        if not runs:
+            sys.exit("No runs found for this project. Run from the project directory or pass a run id.")
+        run_id = runs[0]["id"]
+    try:
+        while True:
+            text, status = render(run_id)
+            sys.stdout.write("\033[H\033[2J" + text + f"\n\n{C['dim']}Ctrl+C to exit{C['reset']}\n")
+            sys.stdout.flush()
+            if status in ("completed", "failed", "cancelled"):
+                break
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

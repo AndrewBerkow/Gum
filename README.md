@@ -1,6 +1,19 @@
 # Gum: Jev-gated, Jev-routed chat harness
 
+Every chat turn goes through one [Jev](https://typesafe.ai) call first. Jev decides whether the turn is safe and in scope, and whether a cheap model (Gemini Flash-Lite) can handle it or it needs a stronger one (Gemini Flash). A split-panel dev console shows Jev's decision for every message, live.
+
 See `PLAN.md` for the full architecture, task list and design decisions.
+
+## Built with Archon: keep building the same way
+
+This repo was built by AI agents running in **[Archon](https://github.com/coleam00/Archon)**, using a test-first workflow that ships in `.archon/workflows/gum/tdd-execute/`. You write a plan; Archon writes the tests, proves they fail, implements, validates, and fixes or halts with a diagnosis.
+
+- **[`ARCHON.md`](ARCHON.md)**: setup, how the workflow works, writing and running a plan, monitoring, and what to do when a run fails
+- **[`plans/`](plans/)**: every real plan used to build Gum, with notes on how each run went, plus a [template](plans/TEMPLATE.md)
+
+```bash
+archon workflow run tdd-execute --no-worktree --detach --input plan=plans/MY_PLAN.md "Execute plans/MY_PLAN.md"
+```
 
 ## Setup
 

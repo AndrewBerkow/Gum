@@ -6,3 +6,7 @@ __pycache__/
 evals/reports/*.md
 evals/reports/*.jsonl
 !evals/reports/.gitkeep
+
+# Archon CLI skill: install locally with `archon skill install` (see ARCHON.md)
+.claude/skills/archon-cli/
+.agents/skills/archon-cli/
